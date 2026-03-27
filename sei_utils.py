@@ -8,16 +8,16 @@ MESES = [
 ]
 
 COLOR_PALETTE = {
-    "background": {"light": "#FFFFFF", "dark": "#1F2937"},
-    "surface": {"light": "#F8FAFC", "dark": "#374151"},
-    "primary": {"light": "#1D4ED8", "dark": "#3B82F6"},
-    "secondary": {"light": "#6B7280", "dark": "#9CA3AF"},
-    "success": {"light": "#16A34A", "dark": "#22C55E"},
-    "warning": {"light": "#D97706", "dark": "#F59E0B"},
-    "error": {"light": "#DC2626", "dark": "#EF4444"},
-    "text_primary": {"light": "#0F172A", "dark": "#F8FAFC"},
-    "text_secondary": {"light": "#475569", "dark": "#CBD5E1"},
-    "border": {"light": "#E2E8F0", "dark": "#4B5563"}
+    "background": {"light": "#FFFFFF", "dark": "#121212"},
+    "surface": {"light": "#F5F5F5", "dark": "#1E1E1E"},
+    "primary": {"light": "#2563EB", "dark": "#3B82F6"},
+    "secondary": {"light": "#64748B", "dark": "#94A3B8"},
+    "success": {"light": "#10B981", "dark": "#34D399"},
+    "warning": {"light": "#F59E0B", "dark": "#FBBF24"},
+    "error": {"light": "#EF4444", "dark": "#F87171"},
+    "text_primary": {"light": "#1F2937", "dark": "#F1F5F9"},
+    "text_secondary": {"light": "#6B7280", "dark": "#CBD5E1"},
+    "border": {"light": "#E5E7EB", "dark": "#374151"}
 }
 
 

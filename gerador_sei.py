@@ -1,4 +1,5 @@
-﻿import tkinter as tk
+﻿import datetime
+import tkinter as tk
 from tkinter import messagebox, filedialog
 from tkcalendar import DateEntry
 import json
@@ -155,97 +156,119 @@ class GeradorSEIApp(ctk.CTk):
         self.bind("<F11>", lambda e: self._toggle_theme())
 
     def _build_ui(self):
-        self.main_frame = ctk.CTkScrollableFrame(self)
-        self.main_frame.pack(fill=ctk.BOTH, expand=True, padx=16, pady=16)
+        self.main_frame = ctk.CTkScrollableFrame(self, fg_color=get_color("background", "dark" if self.is_dark_mode else "light"))
+        self.main_frame.pack(fill=ctk.BOTH, expand=True, padx=20, pady=20)
 
-        title = ctk.CTkLabel(self.main_frame, text="Gerador de Despacho SEI", font=ctk.CTkFont(size=24, weight="bold"))
-        title.pack(pady=(0, 12))
+        # Título minimalista
+        title = ctk.CTkLabel(self.main_frame, text="Gerador SEI", font=ctk.CTkFont(size=18, weight="bold"), text_color=get_color("text_primary", "dark" if self.is_dark_mode else "light"))
+        title.pack(pady=(0, 15))
 
-        self.theme_btn = ctk.CTkButton(self.main_frame, text="☀️ Light" if self.is_dark_mode else "🌙 Dark", command=self._toggle_theme, width=120)
-        self.theme_btn.pack(anchor=ctk.NE, padx=6, pady=(0, 10))
+        # Botão tema no canto superior direito
+        self.theme_btn = ctk.CTkButton(self.main_frame, text="☀️" if self.is_dark_mode else "🌙", width=40, height=30, command=self._toggle_theme, fg_color="transparent", border_width=1, border_color=get_color("border", "dark" if self.is_dark_mode else "light"))
+        self.theme_btn.pack(anchor=ctk.NE, pady=(0, 10))
 
         self._build_form()
 
-        sep = ctk.CTkFrame(self.main_frame, height=2, fg_color=get_color("border", "dark" if self.is_dark_mode else "light"))
-        sep.pack(fill="x", pady=12)
+        # Separador sutil
+        sep = ctk.CTkFrame(self.main_frame, height=1, fg_color=get_color("border", "dark" if self.is_dark_mode else "light"))
+        sep.pack(fill="x", pady=15)
 
         self._build_output()
 
-        self.status_label = ctk.CTkLabel(self.main_frame, text="Pronto para gerar.", text_color=get_color("text_primary", "dark" if self.is_dark_mode else "light"))
-        self.status_label.pack(fill="x", padx=8, pady=(2, 8))
+        # Status discreto
+        self.status_label = ctk.CTkLabel(self.main_frame, text="Pronto", text_color=get_color("text_secondary", "dark" if self.is_dark_mode else "light"), font=ctk.CTkFont(size=11))
+        self.status_label.pack(fill="x", padx=10, pady=(10, 0))
 
     def _build_form(self):
-        self.form_frame = ctk.CTkFrame(self.main_frame, fg_color=get_color("surface", "dark" if self.is_dark_mode else "light"), corner_radius=12)
-        self.form_frame.pack(fill="x", padx=4, pady=4)
+        self.form_frame = ctk.CTkFrame(self.main_frame, fg_color="transparent", border_width=1, border_color=get_color("border", "dark" if self.is_dark_mode else "light"), corner_radius=8)
+        self.form_frame.pack(fill="x", padx=10, pady=5)
 
         fields = [
-            ("Número do Ofício", "778/2026"),
-            ("Número SEI do Ofício", "198654234"),
-            ("Número SEI da Manifestação", "220622554"),
+            ("Ofício", "778/2026"),
+            ("SEI Ofício", "198654234"),
+            ("SEI Manifestação", "220622554"),
             ("Protocolo OUV", "OUV-078543/2026"),
-            ("Resumo da demanda", "Falta de vagas de castração"),
-            ("Prazo de resposta", "27/03/2026")
+            ("Resumo", "Falta de vagas de castração"),
+            ("Prazo", "27/03/2026")
         ]
 
         self.inputs = {}
         self.field_vars = {}
 
         for idx, (label_text, placeholder) in enumerate(fields):
-            label = ctk.CTkLabel(self.form_frame, text=label_text, font=ctk.CTkFont(size=12))
-            label.grid(row=idx, column=0, sticky="w", padx=10, pady=6)
+            # Label compacto
+            label = ctk.CTkLabel(self.form_frame, text=label_text, font=ctk.CTkFont(size=11), text_color=get_color("text_secondary", "dark" if self.is_dark_mode else "light"))
+            label.grid(row=idx, column=0, sticky="w", padx=10, pady=4)
 
+            # Input
             if idx == 5:
                 var = tk.StringVar(value=placeholder)
-                entry = DateEntry(self.form_frame, width=18, date_pattern="dd/mm/yyyy")
+                entry = DateEntry(self.form_frame, width=18, date_pattern="dd/mm/yyyy", font=("Arial", 10))
                 entry.set_date(placeholder)
             else:
                 var = tk.StringVar(value="")
-                entry = ctk.CTkEntry(self.form_frame, width=500, placeholder_text=placeholder, textvariable=var)
-            entry.grid(row=idx, column=1, padx=10, pady=6, sticky="ew")
+                entry = ctk.CTkEntry(self.form_frame, width=400, placeholder_text=placeholder, font=ctk.CTkFont(size=11), height=28)
+            entry.grid(row=idx, column=1, padx=10, pady=4, sticky="ew")
             self.form_frame.grid_columnconfigure(1, weight=1)
             self.inputs[idx] = entry
             self.field_vars[idx] = var
             entry.bind("<KeyRelease>", self._validate_live)
             entry.bind("<FocusOut>", self._validate_live)
-
             Tooltip(entry, f"{label_text}.")
 
-        ctk.CTkLabel(self.form_frame, text="Modelo de texto", font=ctk.CTkFont(size=13, weight="bold")).grid(row=6, column=0, sticky="w", padx=10, pady=8)
+        # Modelo
+        ctk.CTkLabel(self.form_frame, text="Modelo", font=ctk.CTkFont(size=11), text_color=get_color("text_secondary", "dark" if self.is_dark_mode else "light")).grid(row=6, column=0, sticky="w", padx=10, pady=6)
         self.template_var = tk.StringVar(value="HVeP - Atendimento/HVeP")
-        self.model_select = ctk.CTkComboBox(self.form_frame, values=list(self.modelos.keys()), variable=self.template_var, state="readonly", width=500)
-        self.model_select.grid(row=6, column=1, padx=10, pady=8, sticky="ew")
+        self.model_select = ctk.CTkComboBox(self.form_frame, values=list(self.modelos.keys()), variable=self.template_var, state="readonly", width=400, height=28, font=ctk.CTkFont(size=11))
+        self.model_select.grid(row=6, column=1, padx=10, pady=6, sticky="ew")
         self.model_select.bind("<<ComboboxSelected>>", self._on_template_selected)
+        Tooltip(self.model_select, "Selecionar modelo.")
 
-        Tooltip(self.model_select, "Selecione o modelo de texto para gerar despacho.")
-
-        buttons_frame = ctk.CTkFrame(self.form_frame, fg_color=get_color("surface", "dark" if self.is_dark_mode else "light"))
-        buttons_frame.grid(row=7, column=0, columnspan=2, pady=12, padx=8, sticky="ew")
+        # Botões compactos
+        buttons_frame = ctk.CTkFrame(self.form_frame, fg_color="transparent")
+        buttons_frame.grid(row=7, column=0, columnspan=2, pady=10, padx=10, sticky="ew")
 
         actions = [
-            ("Gerar Despacho", self.gerar_despacho),
-            ("Salvar Dados", self._salvar_dados),
-            ("Carregar Dados", self._carregar_dados),
-            ("Exportar PDF", self._exportar_pdf),
+            ("Gerar", self.gerar_despacho),
+            ("Salvar", self._salvar_dados),
+            ("Carregar", self._carregar_dados),
+            ("PDF", self._exportar_pdf),
             ("Copiar", self.copiar_para_clipboard),
             ("Histórico", self._mostrar_historico),
             ("Modelos", self._gerenciar_modelos)
         ]
 
         for i, (text, cmd) in enumerate(actions):
-            btn = ctk.CTkButton(buttons_frame, text=text, command=cmd)
-            btn.grid(row=0, column=i, padx=5, pady=4, sticky="ew")
+            btn = ctk.CTkButton(buttons_frame, text=text, command=cmd, width=70, height=28, font=ctk.CTkFont(size=10))
+            btn.grid(row=0, column=i, padx=3, pady=2, sticky="ew")
             buttons_frame.grid_columnconfigure(i, weight=1)
             Tooltip(btn, f"{text}.")
 
     def _build_output(self):
-        self.output_frame = ctk.CTkFrame(self.main_frame, fg_color=get_color("surface", "dark" if self.is_dark_mode else "light"), corner_radius=12)
-        self.output_frame.pack(fill="both", expand=True, padx=4, pady=4)
+        self.output_frame = ctk.CTkFrame(self.main_frame, fg_color="transparent", border_width=1, border_color=get_color("border", "dark" if self.is_dark_mode else "light"), corner_radius=8)
+        self.output_frame.pack(fill="both", expand=True, padx=10, pady=5)
 
-        label = ctk.CTkLabel(self.output_frame, text="Texto gerado", font=ctk.CTkFont(size=14, weight="bold"))
-        label.pack(anchor="w", padx=10, pady=(8, 6))
+        # Label sutil
+        label = ctk.CTkLabel(self.output_frame, text="Saída", font=ctk.CTkFont(size=12, weight="bold"), text_color=get_color("text_primary", "dark" if self.is_dark_mode else "light"))
+        label.pack(anchor="w", padx=10, pady=(8, 4))
 
-        self.text_saida = ctk.CTkTextbox(self.output_frame, wrap="word", font=ctk.CTkFont(family="Courier", size=11))
+        self.text_saida = ctk.CTkTextbox(
+            self.output_frame,
+            wrap="word",
+            font=ctk.CTkFont(family="Courier", size=11),
+            corner_radius=6,
+            border_width=0,
+            fg_color=get_color("background", "dark" if self.is_dark_mode else "light"),
+            text_color=get_color("text_primary", "dark" if self.is_dark_mode else "light")
+        )
         self.text_saida.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        self._atualizar_text_saida("Texto gerado aparecerá aqui.")
+
+    def _atualizar_text_saida(self, texto):
+        self.text_saida.configure(state="normal")
+        self.text_saida.delete("1.0", ctk.END)
+        self.text_saida.insert("1.0", texto)
+        self.text_saida.configure(state="disabled")
 
     def _validate_live(self, event=None):
         erros = self._validar_campos(silent=True)
@@ -274,10 +297,11 @@ class GeradorSEIApp(ctk.CTk):
         if not assunto_resumido:
             erros.append("Resumo da demanda é obrigatório.")
         try:
-            data = datetime.datetime.strptime(prazo, "%d/%m/%Y")
-            if data < datetime.datetime.now():
+            data = datetime.datetime.strptime(prazo, "%d/%m/%Y").date()
+            hoje = datetime.date.today()
+            if data < hoje:
                 erros.append("Prazo não pode ser no passado.")
-        except Exception:
+        except ValueError:
             erros.append("Formato de data inválido (use dd/mm/yyyy).")
 
         if not silent and erros:
@@ -302,8 +326,7 @@ class GeradorSEIApp(ctk.CTk):
         corpo = modelo(num_oficio, sei_oficio, sei_manifestacao, protocolo_ouv, assunto_resumido, prazo_formatado)
         texto_final = PREFIXO_DOCUMENTO + corpo.strip()
 
-        self.text_saida.delete("1.0", ctk.END)
-        self.text_saida.insert("1.0", texto_final)
+        self._atualizar_text_saida(texto_final)
 
         self.historico.append(texto_final)
         if len(self.historico) > 20:
