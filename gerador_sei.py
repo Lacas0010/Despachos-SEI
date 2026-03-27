@@ -118,7 +118,7 @@ class GeradorSEIApp(ctk.CTk):
     def _toggle_theme(self):
         self.is_dark_mode = not self.is_dark_mode
         ctk.set_appearance_mode("dark" if self.is_dark_mode else "light")
-        self.theme_btn.configure(text="☀️ Light" if self.is_dark_mode else "🌙 Dark")
+        self.theme_btn.configure(text="☀️" if self.is_dark_mode else "🌙")
         self._salvar_config()
 
     def _create_menu(self):
@@ -126,18 +126,18 @@ class GeradorSEIApp(ctk.CTk):
         self.config(menu=menubar)
 
         file_menu = tk.Menu(menubar, tearoff=0)
-        file_menu.add_command(label="Salvar Dados", command=self._salvar_dados, accelerator="Ctrl+S")
-        file_menu.add_command(label="Carregar Dados", command=self._carregar_dados, accelerator="Ctrl+L")
-        file_menu.add_command(label="Exportar PDF", command=self._exportar_pdf, accelerator="Ctrl+E")
+        file_menu.add_command(label="Salvar", command=self._salvar_dados, accelerator="Ctrl+S")
+        file_menu.add_command(label="Carregar", command=self._carregar_dados, accelerator="Ctrl+L")
+        file_menu.add_command(label="PDF", command=self._exportar_pdf, accelerator="Ctrl+E")
         file_menu.add_separator()
         file_menu.add_command(label="Sair", command=self.quit, accelerator="Ctrl+Q")
         menubar.add_cascade(label="Arquivo", menu=file_menu)
 
         edit_menu = tk.Menu(menubar, tearoff=0)
-        edit_menu.add_command(label="Gerar Despacho", command=self.gerar_despacho, accelerator="Ctrl+G")
-        edit_menu.add_command(label="Copiar para Clipboard", command=self.copiar_para_clipboard, accelerator="Ctrl+C")
+        edit_menu.add_command(label="Gerar", command=self.gerar_despacho, accelerator="Ctrl+G")
+        edit_menu.add_command(label="Copiar", command=self.copiar_para_clipboard, accelerator="Ctrl+C")
         edit_menu.add_command(label="Histórico", command=self._mostrar_historico, accelerator="Ctrl+H")
-        edit_menu.add_command(label="Gerenciar Modelos", command=self._gerenciar_modelos, accelerator="Ctrl+M")
+        edit_menu.add_command(label="Modelos", command=self._gerenciar_modelos, accelerator="Ctrl+M")
         menubar.add_cascade(label="Editar", menu=edit_menu)
 
         theme_menu = tk.Menu(menubar, tearoff=0)
