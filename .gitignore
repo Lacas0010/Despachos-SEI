@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.$py.class
+env/
+.venv/
+venv/
+Pipfile.lock
+pip-wheel-metadata/
+
+# IDEs
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Sistema
+.DS_Store
+Thumbs.db
+
+# Logs e temporários
+*.log
+*.tmp
+*.bak
+*.swp
+
+# Arquivos gerados pelo app
+dados_ultimo.json
+config.json
+modelos_custom.json
