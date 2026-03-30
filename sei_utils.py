@@ -1,16 +1,9 @@
-import datetime
-import re
 import customtkinter as ctk
 
-MESES = [
-    "janeiro", "fevereiro", "março", "abril", "maio", "junho",
-    "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"
-]
-
 COLOR_PALETTE = {
-    "background": {"light": "#FFFFFF", "dark": "#121212"},
-    "surface": {"light": "#F5F5F5", "dark": "#1E1E1E"},
-    "primary": {"light": "#2563EB", "dark": "#3B82F6"},
+    "background": {"light": "#FFFFFF", "dark": "#1A1A1A"},
+    "surface": {"light": "#F5F5F5", "dark": "#252525"},
+    "primary": {"light": "#2563EB", "dark": "#007BFF"},
     "secondary": {"light": "#64748B", "dark": "#94A3B8"},
     "success": {"light": "#10B981", "dark": "#34D399"},
     "warning": {"light": "#F59E0B", "dark": "#FBBF24"},
@@ -31,34 +24,3 @@ def configure_theme():
     theme = ctk.get_appearance_mode().lower()
     ctk.set_default_color_theme("blue")
     return theme
-
-
-def formatar_prazo(data_str: str) -> str:
-    """Converte data dd/mm/yyyy para formato textual brasileiro."""
-    try:
-        data = datetime.datetime.strptime(data_str, "%d/%m/%Y")
-    except ValueError:
-        return data_str
-
-    dia = data.day
-    mes = MESES[data.month - 1]
-    ano = data.year
-    dia_str = "1º" if dia == 1 else str(dia)
-    return f"{dia_str} de {mes} de {ano}"
-
-
-def validar_sei(value: str) -> bool:
-    """Valida entrada de SEI: numérico ou #{orig|id}#."""
-    if value.isdigit():
-        return True
-    return bool(re.match(r"^#\{\d+\|\d+\}#$", value))
-
-
-def formatar_sei_link(value: str) -> str:
-    """Retorna o valor já formatado como markup ou converte número para markup."""
-    m = re.match(r"^#\{(\d+)\|(\d+)\}#$", value)
-    if m:
-        return f"#{{{m.group(1)}|{m.group(2)}}}#"
-    if value.isdigit():
-        return f"#{{{value}|{value}}}#"
-    return value

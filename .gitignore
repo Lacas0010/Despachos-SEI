@@ -1,30 +1,86 @@
 # Python
 __pycache__/
 *.py[cod]
-*.$py.class
+*$py.class
+*.pyc
+*.pyo
+*.pyd
 env/
 .venv/
 venv/
+ENV/
 Pipfile.lock
 pip-wheel-metadata/
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
 
-# IDEs
+# IDEs e Editores
 .vscode/
 .idea/
 *.sublime-project
 *.sublime-workspace
+*.swp
+*.swo
+*~
 
-# Sistema
+# Sistema Operacional
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
-
-# Logs e temporários
+*.stackdump
 *.log
 *.tmp
 *.bak
-*.swp
 
 # Arquivos gerados pelo app
 dados_ultimo.json
 config.json
 modelos_custom.json
+*.pdf
+
+# Builds e Distribuição
+build/
+dist/
+*.spec
+*.exe
+*.msi
+*.dmg
+*.pkg
+*.deb
+*.rpm
+*.appimage
+
+# Logs e Debug
+logs/
+*.log
+debug.log
+error.log
+
+# Ambiente de Desenvolvimento
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Arquivos temporários
+tmp/
+temp/
+.cache/
+*.tmp
+*.temp
+
+# Git
+.git/
+.github/
+
+# Documentação gerada
+docs/_build/
+*.pdf
+*.docx
