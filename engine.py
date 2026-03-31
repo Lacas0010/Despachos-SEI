@@ -132,8 +132,8 @@ class SEIEngine:
 
         return PREFIXO_DOCUMENTO + corpo.strip()
 
-    def export_to_pdf(self, text: str, filepath: str) -> bool:
-        """Export text to PDF."""
+    def export_to_pdf(self, text: str, filepath: str) -> Tuple[bool, str]:
+        """Export text to PDF, retornando status e mensagem de erro quando aplicável."""
         try:
             doc = SimpleDocTemplate(filepath, pagesize=letter)
             styles = getSampleStyleSheet()
@@ -146,9 +146,9 @@ class SEIEngine:
                     story.append(Spacer(1, 12))
 
             doc.build(story)
-            return True
-        except Exception:
-            return False
+            return True, ""
+        except Exception as err:
+            return False, str(err)
 
     def add_custom_modelo(self, nome: str, template: str) -> bool:
         """Add custom model string template with tag placeholders."""

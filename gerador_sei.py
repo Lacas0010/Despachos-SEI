@@ -53,6 +53,10 @@ class ScreenBase(ctk.CTkFrame):
     def __init__(self, parent, theme_manager: ThemeManager, **kwargs):
         super().__init__(parent, **kwargs)
         self.theme_manager = theme_manager
+        # Garantir responsividade em todas as telas derivadas
+        self.grid_rowconfigure(0, weight=1)
+        self.grid_columnconfigure(0, weight=1)
+
         try:
             self.theme_manager.attach(self)
         except AttributeError:
@@ -94,8 +98,13 @@ class GenerarScreen(ScreenBase):
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1)
         
-        # Container principal com padding
-        main_frame = ctk.CTkFrame(self, fg_color=get_color_tuple("background"),
+        # Container principal com scroll e padding
+        main_scroll = ctk.CTkScrollableFrame(self, fg_color=get_color_tuple("background"))
+        main_scroll.grid(row=0, column=0, sticky='nsew')
+        main_scroll.grid_rowconfigure(0, weight=1)
+        main_scroll.grid_columnconfigure(0, weight=1)
+
+        main_frame = ctk.CTkFrame(main_scroll, fg_color=get_color_tuple("background"),
                                  corner_radius=12)
         main_frame.grid(row=0, column=0, sticky='nsew', padx=20, pady=20)
         main_frame.grid_rowconfigure(2, weight=1)  # Área de resultado expande
@@ -112,7 +121,13 @@ class GenerarScreen(ScreenBase):
 
         # Área de resultado
         self._create_output_area(main_frame)
-    
+
+        # Força responsividade extra: o conteúdo do frame principal cresce livremente
+        main_frame.grid_rowconfigure(0, weight=0)
+        main_frame.grid_rowconfigure(1, weight=0)
+        main_frame.grid_rowconfigure(2, weight=1)
+        main_frame.grid_columnconfigure(0, weight=1)
+
     def _create_form(self, parent):
         """Cria formulário com layout em grid."""
         # Frame do formulário
@@ -259,10 +274,29 @@ class GenerarScreen(ScreenBase):
         self.text_saida = ctk.CTkTextbox(output_frame, wrap="word",
                                         font=get_font(11, family="Courier New"),
                                         corner_radius=10, border_width=1,
-                                        fg_color=get_color_tuple("background"))
-        self.text_saida.grid(row=1, column=0, sticky='nsew', padx=20, pady=(0, 20))
+                                        fg_color=get_color_tuple("background"),
+                                        text_color=get_color_tuple("text_primary"),
+                                        height=300)
+        self.text_saida.grid(row=1, column=0, sticky='nsew', padx=(20, 0), pady=(0, 20))
+
+        # Scrollbar associada ao textarea do resultado
+        output_scroll = ctk.CTkScrollbar(output_frame, orientation="vertical",
+                                         command=self.text_saida.yview)
+        output_scroll.grid(row=1, column=1, sticky='ns', padx=(0, 20), pady=(0, 20))
+        self.text_saida.configure(yscrollcommand=output_scroll.set)
+        # Manter em estado normal para poder rolar mesmo com visualização somente
+        self.text_saida.configure(state="normal")
+
+        # Grid responsivo do output_frame
+        output_frame.grid_rowconfigure(0, weight=0)
+        output_frame.grid_rowconfigure(1, weight=1)
+        output_frame.grid_rowconfigure(2, weight=0)
+        output_frame.grid_columnconfigure(0, weight=1)
+        output_frame.grid_columnconfigure(1, weight=0)
+
         self.text_saida.insert("1.0", "O resultado do despacho aparecerá aqui...")
-        self.text_saida.configure(state="disabled")
+        # comentário: mantenha em normal para rolagem funcionar
+        self.text_saida.configure(state="normal")
 
         # Status
         self.status_label = ctk.CTkLabel(output_frame, text="Pronto para gerar",
@@ -481,7 +515,8 @@ class GenerarScreen(ScreenBase):
             self.text_saida.configure(state="normal")
             self.text_saida.delete("1.0", ctk.END)
             self.text_saida.insert("1.0", texto)
-            self.text_saida.configure(state="disabled")
+            # deixar em estado normal para permitir seleção e scroll contínuos
+            self.text_saida.configure(state="normal")
             
             # Copia automaticamente para clipboard
             self.master.master.master.clipboard_clear()
@@ -547,13 +582,13 @@ class GenerarScreen(ScreenBase):
             return
         
         try:
-            success = self.engine.export_to_pdf(texto, file_path)
+            success, msg = self.engine.export_to_pdf(texto, file_path)
             if success:
                 self.on_show_message("Sucesso", "PDF exportado!", "success")
             else:
-                self.on_show_message("Erro", "Erro ao exportar PDF.", "error")
+                self.on_show_message("Erro", f"Erro ao exportar PDF: {msg}", "error")
         except Exception as e:
-            self.on_show_message("Erro", f"Erro: {str(e)}", "error")
+            self.on_show_message("Erro", f"Erro ao exportar PDF: {str(e)}", "error")
     
     def _on_copiar(self):
         """Copia para clipboard com feedback."""
@@ -770,9 +805,10 @@ class ModelManagerFrame(ScreenBase):
         container.grid_rowconfigure(3, weight=0)  # Tags não expandem
         container.grid_rowconfigure(4, weight=0)  # Label não expande
         container.grid_rowconfigure(5, weight=0)  # Label não expande
-        container.grid_rowconfigure(6, weight=2)  # Editor expande mais
+        container.grid_rowconfigure(6, weight=1)  # Editor expande com prioridade
         container.grid_rowconfigure(7, weight=0)  # Botões não expandem
         container.grid_columnconfigure(0, weight=1)
+        container.grid_columnconfigure(1, weight=0)
 
         header = ctk.CTkLabel(
             container,
@@ -852,9 +888,14 @@ class ModelManagerFrame(ScreenBase):
             font=get_font(14, family="Consolas"),
             wrap="word",
             fg_color=get_color_tuple("background"),
-            text_color=get_color_tuple("text_primary")
+            text_color=get_color_tuple("text_primary"),
+            height=300
         )
         self.text_editor.grid(row=6, column=0, sticky='nsew', pady=(0, 15))
+
+        model_scroll = ctk.CTkScrollbar(container, orientation='vertical', command=self.text_editor.yview)
+        model_scroll.grid(row=6, column=1, sticky='ns', pady=(0, 15), padx=(5, 0))
+        self.text_editor.configure(yscrollcommand=model_scroll.set)
 
         btn_frame = ctk.CTkFrame(container, fg_color="transparent")
         btn_frame.grid(row=7, column=0, sticky='ew', pady=10)
@@ -1112,23 +1153,33 @@ class GeradorSEIApp(ctk.CTk):
     
     def _build_ui(self):
         """Constrói interface moderna com sidebar elegante."""
+        # Força o app a ser responsivo ao redimensionar
+        self.grid_rowconfigure(0, weight=1)
+        self.grid_columnconfigure(0, weight=1)
+
         # Container principal
         main_container = ctk.CTkFrame(self, fg_color=get_color_tuple("background"))
-        main_container.pack(fill="both", expand=True)
-        
+        main_container.grid(row=0, column=0, sticky='nsew')
+        main_container.grid_rowconfigure(0, weight=0)
+        main_container.grid_rowconfigure(1, weight=1)
+        main_container.grid_columnconfigure(0, weight=1)
+
         # Header elegante
         self._create_header(main_container)
-        
+
         # Área de conteúdo
         content_area = ctk.CTkFrame(main_container, fg_color=get_color_tuple("background"))
-        content_area.pack(fill="both", expand=True)
+        content_area.grid(row=1, column=0, sticky='nsew')
+        content_area.grid_rowconfigure(0, weight=1)
+        content_area.grid_columnconfigure(0, weight=0)
+        content_area.grid_columnconfigure(1, weight=1)
         
         # Sidebar elegante
         self._create_sidebar(content_area)
         
         # Container de telas
         self.screen_container = ctk.CTkFrame(content_area, fg_color=get_color_tuple("background"))
-        self.screen_container.pack(side="right", fill="both", expand=True, padx=20, pady=20)
+        self.screen_container.grid(row=0, column=1, sticky='nsew', padx=20, pady=20)
         self.screen_container.grid_rowconfigure(0, weight=1)
         self.screen_container.grid_columnconfigure(0, weight=1)
         
@@ -1139,8 +1190,8 @@ class GeradorSEIApp(ctk.CTk):
         """Cria header elegante."""
         header = ctk.CTkFrame(parent, fg_color=get_color_tuple("surface"),
                              height=70, corner_radius=0)
-        header.pack(fill="x", padx=0, pady=0)
-        header.pack_propagate(False)
+        header.grid(row=0, column=0, columnspan=2, sticky='ew')
+        header.grid_propagate(False)
         
         title = ctk.CTkLabel(header, text="Gerador SEI", 
                             font=ctk.CTkFont(size=20, weight="bold"),
@@ -1158,8 +1209,10 @@ class GeradorSEIApp(ctk.CTk):
         """Cria sidebar elegante."""
         self.sidebar = ctk.CTkFrame(parent, fg_color=get_color_tuple("surface"),
                                    width=220, corner_radius=0)
-        self.sidebar.pack(side="left", fill="y", padx=0, pady=0)
-        self.sidebar.pack_propagate(False)
+        self.sidebar.grid(row=0, column=0, sticky='nsw', padx=0, pady=0)
+        self.sidebar.grid_propagate(False)
+        parent.grid_rowconfigure(0, weight=1)
+        parent.grid_columnconfigure(0, weight=0)
         
         # Título da sidebar
         sidebar_title = ctk.CTkLabel(self.sidebar, text="NAVEGAÇÃO", 
@@ -1270,7 +1323,7 @@ class GeradorSEIApp(ctk.CTk):
         self.screens["gerar"].text_saida.configure(state="normal")
         self.screens["gerar"].text_saida.delete("1.0", ctk.END)
         self.screens["gerar"].text_saida.insert("1.0", texto)
-        self.screens["gerar"].text_saida.configure(state="disabled")
+        self.screens["gerar"].text_saida.configure(state="normal")
         self.historico.append(texto)
         self._switch_screen("gerar")
     
