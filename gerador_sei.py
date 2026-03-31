@@ -1276,7 +1276,6 @@ class GeradorSEIApp(ctk.CTk):
         self.bind("<Control-l>", lambda e: self.screens["gerar"]._on_carregar())
         self.bind("<Control-e>", lambda e: self.screens["gerar"]._on_pdf())
         self.bind("<Control-g>", lambda e: self.screens["gerar"]._on_gerar())
-        self.bind("<Control-c>", lambda e: self.screens["gerar"]._on_copiar())
         self.bind("<Control-q>", lambda e: self.quit())
         self.bind("<F11>", lambda e: self._toggle_theme())
     

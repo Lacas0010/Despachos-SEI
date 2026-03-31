@@ -100,6 +100,22 @@ class SEIEngine:
 
         return errors
 
+    def format_prazo(self, prazo: str) -> str:
+        """Formata prazo no padrão: 3 de abril de 2026."""
+        if not prazo:
+            return ""
+
+        # aceita entrada dd/mm/yyyy ou '3 de abril de 2026'
+        try:
+            # formato esperado dd/mm/yyyy
+            data = datetime.datetime.strptime(prazo.strip(), "%d/%m/%Y").date()
+            meses = ["janeiro", "fevereiro", "março", "abril", "maio", "junho",
+                     "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"]
+            return f"{data.day} de {meses[data.month - 1]} de {data.year}"
+        except ValueError:
+            # Se já estiver no formato extenso, retorna como está
+            return prazo.strip()
+
     def generate_despacho(self, data: Dict[str, str]) -> str:
         """Generate SEI dispatch text using named tag placeholders."""
         modelo = self.modelos.get(data.get("modelo", "HVeP - Atendimento/HVeP"), MODELO_HVEP)
@@ -110,7 +126,7 @@ class SEIEngine:
             "SEI_MANIFESTACAO": data.get("sei_manifestacao", ""),
             "PROTOCOLO": data.get("protocolo", ""),
             "RESUMO": data.get("resumo", ""),
-            "PRAZO": data.get("prazo", "")
+            "PRAZO": self.format_prazo(data.get("prazo", ""))
         }
 
         if isinstance(modelo, str):

@@ -78,7 +78,7 @@ pip install customtkinter tkcalendar reportlab pandas openpyxl matplotlib
 | `Ctrl+S` | Salvar Dados |
 | `Ctrl+L` | Carregar Dados |
 | `Ctrl+E` | Exportar PDF |
-| `Ctrl+C` | Copiar para Clipboard |
+| (não aplicado) | `Ctrl+C` diretamente copia seleção do campo Resultado |
 | `Ctrl+H` | Histórico |
 | `Ctrl+M` | Gerenciar Modelos |
 | `F11` | Alternar Tema |
