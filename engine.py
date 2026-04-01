@@ -200,3 +200,9 @@ class SEIEngine:
     def get_modelos_list(self) -> List[str]:
         """Get list of available models."""
         return list(self.modelos.keys())
+
+    def calcular_data_prazo(self, dias: int) -> str:
+        """Calcula prazo a partir de hoje (dias) e retorna no formato dd/mm/YYYY."""
+        hoje = datetime.date.today()
+        data_prazo = hoje + datetime.timedelta(days=dias)
+        return data_prazo.strftime("%d/%m/%Y")

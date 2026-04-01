@@ -4,6 +4,7 @@ Modern interface for SEI document generation
 """
 
 import datetime
+import re
 import tkinter as tk
 from tkinter import filedialog, simpledialog
 import json
@@ -90,9 +91,43 @@ class GenerarScreen(ScreenBase):
         self.text_saida: Optional[ctk.CTkTextbox] = None
         self.status_label: Optional[ctk.CTkLabel] = None
         self.model_select: Optional[ctk.CTkComboBox] = None
+        self.input_map: Dict[str, ctk.CTkEntry] = {}
 
         self._build_ui()
     
+    def _is_valid_sei(self, value: str) -> bool:
+        if not value:
+            return False
+        # Exemplo de formato esperado: apenas dígitos ou número com barra
+        return bool(re.match(r"^\d{4,12}$", value.strip()))
+
+    def _is_valid_protocolo(self, value: str) -> bool:
+        return bool(re.match(r"^OUV-\d+\/\d{4}$", value.strip()))
+
+    def _apply_prazo_shortcut(self, dias: int, prazo_entry: ctk.CTkEntry) -> None:
+        prazo_entry.delete(0, tk.END)
+        prazo_entry.insert(0, self.engine.calcular_data_prazo(dias))
+        self._validate_live()
+
+    def _validate_field(self, entry: ctk.CTkEntry, field_name: str) -> None:
+        valor = entry.get().strip()
+        if field_name in ["SEI Ofício", "SEI Manifestação"]:
+            if not valor:
+                entry.configure(border_color=get_color_tuple("border"))
+            elif self._is_valid_sei(valor):
+                entry.configure(border_color=get_color_tuple("success"))
+            else:
+                entry.configure(border_color=get_color_tuple("error"))
+        elif field_name == "Protocolo OUV":
+            if not valor:
+                entry.configure(border_color=get_color_tuple("border"))
+            elif self._is_valid_protocolo(valor):
+                entry.configure(border_color=get_color_tuple("success"))
+            else:
+                entry.configure(border_color=get_color_tuple("error"))
+        else:
+            entry.configure(border_color=get_color_tuple("border"))
+
     def _build_ui(self) -> None:
         """Constrói interface moderna com layout em grid."""
         self.grid_rowconfigure(0, weight=1)
@@ -129,7 +164,7 @@ class GenerarScreen(ScreenBase):
         main_frame.grid_columnconfigure(0, weight=1)
 
     def _create_form(self, parent):
-        """Cria formulário com layout em grid."""
+        """Cria formulário com layout em grid e agrupamento lógico."""
         # Frame do formulário
         form_frame = ctk.CTkFrame(parent, fg_color=get_color_tuple("surface"),
                                  corner_radius=12)
@@ -140,32 +175,84 @@ class GenerarScreen(ScreenBase):
         hoje = datetime.date.today()
         prazo_inicial = hoje.strftime("%d/%m/%Y")
         
-        # Campos em grid: 2 colunas para campos menores
-        fields = [
-            ("Ofício", "778/2026", 0, 0),
-            ("Prazo", prazo_inicial, 0, 1),
-            ("SEI Ofício", "198654234", 1, 0),
-            ("SEI Manifestação", "220622554", 1, 1),
-            ("Protocolo OUV", "OUV-078543/2026", 2, 0),
-            ("Resumo", "Falta de vagas de castração", 3, 0, 2)  # Span 2 colunas
+        # Bloco 1: Dados do Documento
+        doc_frame = ctk.CTkFrame(form_frame, fg_color=get_color_tuple("background"),
+                                border_width=1, border_color=get_color_tuple("border"),
+                                corner_radius=8)
+        doc_frame.grid(row=0, column=0, columnspan=2, sticky='ew', padx=20, pady=(20, 15))
+        doc_frame.grid_columnconfigure(0, weight=1)
+        doc_frame.grid_columnconfigure(1, weight=1)
+        
+        # Título do bloco
+        doc_title = ctk.CTkLabel(doc_frame, text="📄 Dados do Documento",
+                                font=get_font(14, "bold"),
+                                text_color=get_color_tuple("text_primary"))
+        doc_title.grid(row=0, column=0, columnspan=2, sticky='w', padx=15, pady=(15, 10))
+        
+        # Campos do documento
+        doc_fields = [
+            ("Ofício", "778/2026", 1, 0),
+            ("SEI Ofício", "198654234", 1, 1),
+            ("SEI Manifestação", "220622554", 3, 0),
         ]
         
-        for field in fields:
+        for field in doc_fields:
+            label_text, placeholder, row, col = field
+            
+            # Label
+            label = ctk.CTkLabel(doc_frame, text=label_text, 
+                                font=get_font(12, "bold"),
+                                text_color=get_color_tuple("text_secondary"))
+            label.grid(row=row, column=col, sticky="w", padx=15, pady=(10, 5))
+            
+            # Input
+            entry = ctk.CTkEntry(doc_frame, placeholder_text=placeholder,
+                                font=get_font(12), height=42,
+                                border_width=1, corner_radius=10,
+                                fg_color=get_color_tuple("background"))
+            entry.grid(row=row+1, column=col, sticky="ew", padx=15, pady=(0, 15))
+            
+            self.inputs[len(self.inputs)] = entry
+            entry.bind("<KeyRelease>", self._validate_live)
+            entry.bind("<FocusOut>", self._validate_live)
+            Tooltip(entry, label_text)
+        
+        # Bloco 2: Dados da Manifestação
+        manifest_frame = ctk.CTkFrame(form_frame, fg_color=get_color_tuple("background"),
+                                     border_width=1, border_color=get_color_tuple("border"),
+                                     corner_radius=8)
+        manifest_frame.grid(row=2, column=0, columnspan=2, sticky='ew', padx=20, pady=(0, 15))
+        manifest_frame.grid_columnconfigure(0, weight=1)
+        manifest_frame.grid_columnconfigure(1, weight=1)
+        
+        # Título do bloco
+        manifest_title = ctk.CTkLabel(manifest_frame, text="📋 Dados da Manifestação",
+                                     font=get_font(14, "bold"),
+                                     text_color=get_color_tuple("text_primary"))
+        manifest_title.grid(row=0, column=0, columnspan=2, sticky='w', padx=15, pady=(15, 10))
+        
+        # Campos da manifestação
+        manifest_fields = [
+            ("Protocolo OUV", "OUV-078543/2026", 1, 0),
+            ("Prazo", prazo_inicial, 1, 1),
+            ("Resumo", "Falta de vagas de castração", 4, 0, 2),  # Span 2 colunas
+        ]
+        
+        for field in manifest_fields:
             label_text, placeholder, row, col = field[:4]
             colspan = field[4] if len(field) > 4 else 1
             
             # Label
-            label = ctk.CTkLabel(form_frame, text=label_text, 
+            label = ctk.CTkLabel(manifest_frame, text=label_text, 
                                 font=get_font(12, "bold"),
                                 text_color=get_color_tuple("text_secondary"))
-            label.grid(row=row*2, column=col, sticky="w", padx=20, pady=(20, 5))
+            label.grid(row=row, column=col, sticky="w", padx=15, pady=(10, 5))
             
             # Input
             if label_text == "Prazo":
                 # Frame para entrada + botão calendário
-                date_frame = ctk.CTkFrame(form_frame, fg_color=get_color_tuple("transparent"), height=42)
-                date_frame.grid(row=row*2+1, column=col, columnspan=colspan, sticky="ew", 
-                               padx=20, pady=(0, 10))
+                date_frame = ctk.CTkFrame(manifest_frame, fg_color=get_color_tuple("transparent"), height=42)
+                date_frame.grid(row=row+1, column=col, sticky="ew", padx=15, pady=(0, 5))
                 date_frame.grid_propagate(False)
                 
                 entry = ctk.CTkEntry(date_frame, placeholder_text=placeholder,
@@ -184,36 +271,41 @@ class GenerarScreen(ScreenBase):
                 # Set initial date
                 hoje = datetime.date.today()
                 entry.insert(0, hoje.strftime("%d/%m/%Y"))
+
+                # Atalhos de prazo
+                shortcut_frame = ctk.CTkFrame(manifest_frame, fg_color="transparent")
+                shortcut_frame.grid(row=row+2, column=col, sticky="ew", padx=15, pady=(0, 10))
+                for dias in [5, 15, 30]:
+                    ctk.CTkButton(shortcut_frame, text=f"+{dias}d", width=60, height=28,
+                                  font=get_font(10), command=lambda d=dias, e=entry: self._apply_prazo_shortcut(d, e)).pack(side="left", padx=4)
             else:
-                entry = ctk.CTkEntry(form_frame, placeholder_text=placeholder,
+                entry = ctk.CTkEntry(manifest_frame, placeholder_text=placeholder,
                                     font=get_font(12), height=42,
                                     border_width=1, corner_radius=10,
                                     fg_color=get_color_tuple("background"))
-                entry.grid(row=row*2+1, column=col, columnspan=colspan, sticky="ew", 
-                          padx=20, pady=(0, 10))
+                entry.grid(row=row+1, column=col, columnspan=colspan, sticky="ew", 
+                          padx=15, pady=(0, 15))
                 if colspan == 1:
-                    form_frame.grid_columnconfigure(col, weight=1)
+                    manifest_frame.grid_columnconfigure(col, weight=1)
             
             self.inputs[len(self.inputs)] = entry
-            entry.bind("<KeyRelease>", self._validate_live)
-            entry.bind("<FocusOut>", self._validate_live)
-
-            # Sem formatação automática para SEI Ofício / SEI Manifestação.
-            # O usuário cola texto diretamente, inclusive tags manuais como #{...|...}#.
+            entry.bind("<KeyRelease>", lambda e, ent=entry, name=label_text: (self._validate_live(), self._validate_field(ent, name)))
+            entry.bind("<FocusIn>", lambda e, ent=entry: ent.configure(border_color=get_color_tuple("primary")))
+            entry.bind("<FocusOut>", lambda e, ent=entry, name=label_text: self._validate_field(ent, name))
             Tooltip(entry, label_text)
-        
+
         # Modelo
         model_label = ctk.CTkLabel(form_frame, text="Modelo", 
                                   font=get_font(12, "bold"),
                                   text_color=get_color_tuple("text_secondary"))
-        model_label.grid(row=8, column=0, sticky="w", padx=20, pady=(20, 5))
+        model_label.grid(row=4, column=0, sticky="w", padx=20, pady=(20, 5))
         
         self.model_select = ctk.CTkComboBox(form_frame, values=self.engine.get_modelos_list(),
                                            variable=self.template_var, state="readonly",
                                            height=42, font=get_font(12),
                                            border_width=1, corner_radius=10,
                                            fg_color=get_color_tuple("background"))
-        self.model_select.grid(row=9, column=0, columnspan=2, sticky="ew", padx=20, pady=(0, 20))
+        self.model_select.grid(row=5, column=0, columnspan=2, sticky="ew", padx=20, pady=(0, 20))
         self.model_select.bind("<<ComboboxSelected>>", self._on_template_selected)
         Tooltip(self.model_select, "Selecionar modelo")
         
@@ -261,7 +353,7 @@ class GenerarScreen(ScreenBase):
         
         result_label = ctk.CTkLabel(header_frame, text="Resultado do Despacho", 
                                    font=get_font(16, "bold"),
-                                   text_color=get_color_tuple("text_primary"))
+                                   text_color=self.theme_manager.get_color("text_primary"))
         result_label.grid(row=0, column=0, sticky='w')
         
         copy_btn = ctk.CTkButton(header_frame, text="📋 Copiar", command=self._on_copiar,
@@ -272,10 +364,10 @@ class GenerarScreen(ScreenBase):
         
         # Textbox com fonte mono
         self.text_saida = ctk.CTkTextbox(output_frame, wrap="word",
-                                        font=get_font(11, family="Courier New"),
+                                        font=get_font(13, family="Consolas"),
                                         corner_radius=10, border_width=1,
-                                        fg_color=get_color_tuple("background"),
-                                        text_color=get_color_tuple("text_primary"),
+                                        fg_color=self.theme_manager.get_color("background"),
+                                        text_color=self.theme_manager.get_color("text_primary"),
                                         height=300)
         self.text_saida.grid(row=1, column=0, sticky='nsew', padx=(20, 0), pady=(0, 20))
 
@@ -287,6 +379,17 @@ class GenerarScreen(ScreenBase):
         # Manter em estado normal para poder rolar mesmo com visualização somente
         self.text_saida.configure(state="normal")
 
+        # Botão Copiar e Limpar
+        clear_copy_frame = ctk.CTkFrame(output_frame, fg_color="transparent")
+        clear_copy_frame.grid(row=2, column=0, sticky='ew', padx=20, pady=(0, 20))
+        
+        clear_copy_btn = ctk.CTkButton(clear_copy_frame, text="📋 Copiar e Limpar", 
+                                      command=self._on_copiar_limpar,
+                                      height=40, font=get_font(12, "bold"),
+                                      fg_color=get_color_tuple("primary"),
+                                      hover_color="#0056CC", corner_radius=8)
+        clear_copy_btn.pack(fill="x")
+
         # Grid responsivo do output_frame
         output_frame.grid_rowconfigure(0, weight=0)
         output_frame.grid_rowconfigure(1, weight=1)
@@ -294,8 +397,8 @@ class GenerarScreen(ScreenBase):
         output_frame.grid_columnconfigure(0, weight=1)
         output_frame.grid_columnconfigure(1, weight=0)
 
-        self.text_saida.insert("1.0", "O resultado do despacho aparecerá aqui...")
-        # comentário: mantenha em normal para rolagem funcionar
+        # Placeholder
+        self.text_saida.insert("1.0", "O despacho gerado aparecerá aqui após preencher os dados acima.")
         self.text_saida.configure(state="normal")
 
         # Status
@@ -311,7 +414,7 @@ class GenerarScreen(ScreenBase):
         picker.title("")
         picker.geometry("300x350")
         picker.resizable(False, False)
-        picker.transient(self.master.master.master)
+        picker.transient(self.winfo_toplevel())
         picker.grab_set()
         
         # Centralizar na tela
@@ -462,6 +565,9 @@ class GenerarScreen(ScreenBase):
     
     def _validate_live(self, event=None):
         """Validação ao vivo com feedback visual."""
+        if self.status_label is None:
+            return
+
         erros = self._validar_campos(silent=True)
         if erros:
             self.status_label.configure(
@@ -494,9 +600,19 @@ class GenerarScreen(ScreenBase):
         return erros
     
     def _on_gerar(self):
-        """Gera despacho e copia automaticamente."""
+        """Gera despacho e copia automaticamente com feedback visual."""
         if self._validar_campos():
             return
+        
+        if self.text_saida is None or self.status_label is None:
+            return
+
+        # Feedback visual: muda cor da borda do text_saida
+        original_border_color = self.text_saida.cget("border_color")
+        self.text_saida.configure(border_color=get_color_tuple("success"))
+        
+        # Animação do botão (check temporário) - simplificado
+        self._show_generation_feedback()
         
         values = [self.inputs[i].get().strip() for i in range(6)]
         despacho_data = {
@@ -519,17 +635,60 @@ class GenerarScreen(ScreenBase):
             self.text_saida.configure(state="normal")
             
             # Copia automaticamente para clipboard
-            self.master.master.master.clipboard_clear()
-            self.master.master.master.clipboard_append(texto)
-            
-            # Atualiza status
-            self.status_label.configure(text="Despacho gerado e copiado!",
-                                       text_color=get_color_tuple("success"))
-            self.after(3000, lambda: self._validate_live())  # Reset status after 3s
-            
+            root = self.winfo_toplevel()
+            if hasattr(root, "clipboard_clear") and hasattr(root, "clipboard_append"):
+                root.clipboard_clear()
+                root.clipboard_append(texto)
+
+            # Atualiza status e histórico
+            if self.status_label is not None:
+                self.status_label.configure(text="Despacho gerado e copiado!",
+                                           text_color=get_color_tuple("success"))
+
+            # Armazena registro no histórico como card
+            if hasattr(root, "historico"):
+                historico_attr = getattr(root, "historico", None)
+                if isinstance(historico_attr, list):
+                    historico_attr.append({
+                        "modelo": despacho_data["modelo"],
+                        "sei": despacho_data["sei_manifestacao"],
+                        "data_criacao": datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                        "texto": texto,
+                        "oficio": despacho_data["oficio"],
+                        "protocolo": despacho_data["protocolo"],
+                        "resumo": despacho_data["resumo"],
+                        "prazo": despacho_data["prazo"]
+                    })
+
+            if hasattr(root, "screens"):
+                screens_attr = getattr(root, "screens", None)
+                if isinstance(screens_attr, dict) and "historico" in screens_attr:
+                    screens_attr["historico"]._refresh()
+
             self.on_show_message("Sucesso", "Despacho gerado e copiado automaticamente!", "success")
+
+            # Reset visual feedback after 2 seconds
+            self.after(2000, lambda: self._reset_visual_feedback(original_border_color))
+            
         except Exception as e:
+            # Reset visual feedback on error
+            self._reset_visual_feedback(original_border_color)
             self.on_show_message("Erro", f"Erro na geração: {str(e)}", "error")
+    
+    def _show_generation_feedback(self):
+        """Mostra feedback visual de geração."""
+        if self.status_label is None:
+            return
+        self.status_label.configure(
+            text="Gerando despacho...",
+            text_color=get_color_tuple("primary")
+        )
+    
+    def _reset_visual_feedback(self, border_color):
+        """Reseta o feedback visual."""
+        if self.text_saida is not None:
+            self.text_saida.configure(border_color=border_color)
+        self._validate_live()
     
     def _on_template_selected(self, event=None):
         """Atualiza resumo quando modelo muda."""
@@ -571,6 +730,8 @@ class GenerarScreen(ScreenBase):
     
     def _on_pdf(self):
         """Exporta PDF."""
+        if self.text_saida is None:
+            return
         texto = self.text_saida.get("1.0", ctk.END).strip()
         if not texto or texto == "Resultado aparecerá aqui...":
             self.on_show_message("Aviso", "Nada para exportar", "warning")
@@ -592,24 +753,70 @@ class GenerarScreen(ScreenBase):
     
     def _on_copiar(self):
         """Copia para clipboard com feedback."""
+        if self.text_saida is None:
+            return
+
         texto = self.text_saida.get("1.0", ctk.END).strip()
-        if not texto or texto == "O resultado do despacho aparecerá aqui...":
+        if not texto or texto == "O despacho gerado aparecerá aqui após preencher os dados acima.":
             self.on_show_message("Aviso", "Nada para copiar", "warning")
             return
-        self.master.master.master.clipboard_clear()
-        self.master.master.master.clipboard_append(texto)
-        self.status_label.configure(text="Copiado para área de transferência!",
-                                   text_color=get_color_tuple("success"))
+
+        root = self.winfo_toplevel()
+        if hasattr(root, "clipboard_clear") and hasattr(root, "clipboard_append"):
+            root.clipboard_clear()
+            root.clipboard_append(texto)
+
+        if self.status_label is not None:
+            self.status_label.configure(
+                text="Copiado para área de transferência!",
+                text_color=get_color_tuple("success")
+            )
         self.after(2000, lambda: self._validate_live())  # Reset status after 2s
+    
+    def _on_copiar_limpar(self):
+        """Copia para clipboard e limpa todos os campos."""
+        if self.text_saida is None:
+            return
+
+        texto = self.text_saida.get("1.0", ctk.END).strip()
+        if not texto or texto == "O despacho gerado aparecerá aqui após preencher os dados acima.":
+            self.on_show_message("Aviso", "Nada para copiar", "warning")
+            return
+
+        # Copia para clipboard
+        root = self.winfo_toplevel()
+        if hasattr(root, "clipboard_clear") and hasattr(root, "clipboard_append"):
+            root.clipboard_clear()
+            root.clipboard_append(texto)
+        
+        # Limpa todos os campos
+        for entry in self.inputs.values():
+            entry.delete(0, tk.END)
+        
+        # Reset modelo
+        self.template_var.set("HVeP - Atendimento/HVeP")
+        
+        # Reset text_saida para placeholder
+        if self.text_saida is not None:
+            self.text_saida.configure(state="normal")
+            self.text_saida.delete("1.0", ctk.END)
+            self.text_saida.insert("1.0", "O despacho gerado aparecerá aqui após preencher os dados acima.")
+        
+        # Feedback
+        if self.status_label is not None:
+            self.status_label.configure(text="Copiado e campos limpos!",
+                                       text_color=get_color_tuple("success"))
+        self.on_show_message("Sucesso", "Texto copiado e campos limpos para o próximo despacho!", "success")
+        self.after(3000, lambda: self._validate_live())  # Reset status after 3s
 
 
 class HistoricoScreen(ScreenBase):
-    """Tela de histórico de despachos."""
+    """Tela de histórico de despachos em cards modernos."""
     
     def __init__(self, parent, theme_manager, historico, **kwargs):
         super().__init__(parent, theme_manager=theme_manager, **kwargs)
         self.historico = historico
-        self.listbox = None
+        self.cards_container = None
         
         self._build_ui()
     
@@ -621,40 +828,26 @@ class HistoricoScreen(ScreenBase):
         container = ctk.CTkScrollableFrame(self, fg_color=get_color_tuple("background"))
         container.grid(row=0, column=0, sticky='nsew', padx=15, pady=15)
         container.grid_rowconfigure(0, weight=0)  # Header não expande
-        container.grid_rowconfigure(2, weight=1)  # Listbox expande
-        container.grid_rowconfigure(3, weight=0)  # Botões não expandem
+        container.grid_rowconfigure(1, weight=0)  # Label e busca não expande
+        container.grid_rowconfigure(2, weight=0)  # Espaço de busca
+        container.grid_rowconfigure(3, weight=1)  # Listbox expande
+        container.grid_rowconfigure(4, weight=0)  # Botões não expandem
         container.grid_columnconfigure(0, weight=1)
 
         header = ctk.CTkLabel(container, text="Histórico de Despachos",
                              font=ctk.CTkFont(size=16, weight="bold"),
-                             text_color=get_color_tuple("text_primary"))
+                             text_color=self.theme_manager.get_color("text_primary"))
         header.grid(row=0, column=0, sticky='w', pady=(0, 15))
 
-        listbox_frame = ctk.CTkFrame(container, border_width=1,
-                                     border_color=get_color_tuple("border"),
-                                     corner_radius=6)
-        listbox_frame.grid(row=2, column=0, sticky='nsew', pady=(0, 15))
-        listbox_frame.grid_rowconfigure(0, weight=1)
-        listbox_frame.grid_columnconfigure(0, weight=1)
-
-        self.listbox = tk.Listbox(
-            listbox_frame,
-            selectmode=tk.SINGLE,
-            bg=self.theme_manager.get_color("background"),
-            fg=self.theme_manager.get_color("text_primary"),
-            borderwidth=0,
-            highlightthickness=0,
-            font=("Arial", 10),
-            height=20
-        )
-        self.listbox.grid(row=0, column=0, sticky='nsew', padx=5, pady=5)
+        self.cards_container = ctk.CTkFrame(container, border_width=1,
+                                               border_color=get_color_tuple("border"),
+                                               corner_radius=6)
+        self.cards_container.grid(row=2, column=0, sticky='nsew', pady=(0, 15))
+        self.cards_container.grid_columnconfigure(0, weight=1)
 
         btn_frame = ctk.CTkFrame(container, fg_color="transparent")
         btn_frame.grid(row=3, column=0, sticky='ew', pady=10)
         
-        ctk.CTkButton(btn_frame, text="📂 Carregar", command=self._on_carregar,
-                     height=32, font=ctk.CTkFont(size=10, weight="bold"),
-                     width=150).pack(side="left", padx=5)
         ctk.CTkButton(btn_frame, text="🗑️ Limpar", command=self._on_limpar,
                      height=32, font=ctk.CTkFont(size=10, weight="bold"),
                      width=150).pack(side="left", padx=5)
@@ -663,28 +856,84 @@ class HistoricoScreen(ScreenBase):
     
     def _on_theme_change(self, is_dark):
         """Atualiza cores."""
-        if self.listbox:
-            self.listbox.configure(
-                bg=get_color_tuple("background"),
-                fg=get_color_tuple("text_primary")
-            )
         self.configure(fg_color=get_color_tuple("background"))
+        if self.cards_container:
+            self.cards_container.configure(border_color=get_color_tuple("border"))
     
     def _refresh(self):
-        """Atualiza listbox."""
-        self.listbox.delete(0, tk.END)
-        for i, item in enumerate(self.historico[-20:]):
-            idx = len(self.historico) - 20 + i + 1
-            self.listbox.insert(tk.END, f"{idx}. {item[:80]}...")
+        """Atualiza cards de histórico."""
+        if self.cards_container is None:
+            return
+        for widget in self.cards_container.winfo_children():
+            widget.destroy()
+
+        for item in reversed(self.historico[-20:]):
+            card = ctk.CTkFrame(self.cards_container, fg_color=get_color_tuple("surface"),
+                                border_width=1, border_color=get_color_tuple("border"),
+                                corner_radius=8)
+            card.pack(fill="x", padx=5, pady=5)
+
+            titulo = ctk.CTkLabel(card, text=f"{item.get('modelo', 'Sem Modelo')}",
+                                  font=get_font(12, "bold"),
+                                  text_color=get_color_tuple("text_primary"))
+            titulo.grid(row=0, column=0, sticky='w', padx=10, pady=(8, 2))
+
+            sei_txt = ctk.CTkLabel(card, text=f"SEI: {item.get('sei', '-')}",
+                                  font=get_font(10, "bold"),
+                                  text_color=get_color_tuple("text_secondary"))
+            sei_txt.grid(row=1, column=0, sticky='w', padx=10)
+
+            data_txt = ctk.CTkLabel(card, text=f"Criado em: {item.get('data_criacao', '-')}",
+                                    font=get_font(10),
+                                    text_color=get_color_tuple("text_secondary"))
+            data_txt.grid(row=1, column=1, sticky='e', padx=10)
+
+            texto_preview = ctk.CTkLabel(card, text=item.get('texto', '')[:150].replace('\n', ' ')+('...' if len(item.get('texto', ''))>150 else ''),
+                                         font=get_font(9),
+                                         text_color=get_color_tuple("text_secondary"),
+                                         wraplength=900, justify='left')
+            texto_preview.grid(row=2, column=0, columnspan=2, sticky='w', padx=10, pady=(2, 8))
+
+            btn_container = ctk.CTkFrame(card, fg_color="transparent")
+            btn_container.grid(row=3, column=0, columnspan=2, sticky='e', padx=10, pady=(0, 8))
+
+            ctk.CTkButton(btn_container, text="📋 Copiar Novamente",
+                          command=lambda i=item: self._copy_to_clipboard(i.get('texto', '')),
+                          width=140, height=28, font=get_font(9, "bold")).pack(side='right', padx=4)
+
+            ctk.CTkButton(btn_container, text="🔄 Carregar Dados", 
+                          command=lambda i=item: self._call_reutilizar(i),
+                          width=130, height=28, font=get_font(9, "bold")).pack(side='right', padx=4)
+            # O histórico já foi adicionado ao card acima; não há item_frame definido aqui.
     
     def _on_carregar(self):
-        """Carrega item selecionado."""
-        selection = self.listbox.curselection()
-        if selection:
-            idx = selection[0]
-            texto = self.historico[-20 + idx]
-            self.master.master.master._load_despacho(texto)
+        """Carrega item selecionado (deprecated - usar reutilizar)."""
+        pass  # Agora usa _on_reutilizar
     
+    def _on_reutilizar(self, idx):
+        """Reutiliza dados do item selecionado."""
+        texto = self.historico[-20 + idx]
+        root = self.winfo_toplevel()
+        method = getattr(root, "_reutilizar_dados", None)
+        if callable(method):
+            try:
+                method(texto)
+            except Exception:
+                pass
+
+    def _copy_to_clipboard(self, texto):
+        root = self.winfo_toplevel()
+        if hasattr(root, "clipboard_clear") and hasattr(root, "clipboard_append"):
+            root.clipboard_clear()
+            root.clipboard_append(texto)
+
+    def _call_reutilizar(self, item):
+        root = self.winfo_toplevel()
+        if hasattr(root, "_reutilizar_dados"):
+            method = getattr(root, "_reutilizar_dados")
+            if callable(method):
+                method(item)
+
     def _on_limpar(self):
         """Limpa histórico."""
         self.historico.clear()
@@ -825,6 +1074,20 @@ class ModelManagerFrame(ScreenBase):
             text_color=get_color_tuple("text_secondary")
         ).grid(row=1, column=0, sticky='w', pady=(0, 5))
 
+        self.model_search_var = tk.StringVar(value="")
+        search_entry = ctk.CTkEntry(
+            container,
+            placeholder_text="Buscar modelo...",
+            textvariable=self.model_search_var,
+            font=get_font(11),
+            height=32,
+            border_width=1,
+            corner_radius=8,
+            fg_color=get_color_tuple("background")
+        )
+        search_entry.grid(row=2, column=0, sticky='ew', pady=(0, 10))
+        self.model_search_var.trace_add("write", lambda *args: self._refresh_listbox())
+
         listbox_frame = ctk.CTkFrame(
             container,
             border_width=1,
@@ -870,7 +1133,7 @@ class ModelManagerFrame(ScreenBase):
             container,
             text="Selecione um modelo para editar",
             font=get_font(10),
-            text_color=get_color_tuple("text_secondary")
+            text_color=self.theme_manager.get_color("text_secondary")
         )
         self.selected_label.grid(row=4, column=0, sticky='w', pady=(8, 5))
 
@@ -878,7 +1141,7 @@ class ModelManagerFrame(ScreenBase):
             container,
             text="Editar Código:",
             font=get_font(11, "bold"),
-            text_color=get_color_tuple("text_secondary")
+            text_color=self.theme_manager.get_color("text_secondary")
         ).grid(row=5, column=0, sticky='w', pady=(0, 5))
 
         self.text_editor = ctk.CTkTextbox(
@@ -887,8 +1150,8 @@ class ModelManagerFrame(ScreenBase):
             border_width=1,
             font=get_font(14, family="Consolas"),
             wrap="word",
-            fg_color=get_color_tuple("background"),
-            text_color=get_color_tuple("text_primary"),
+            fg_color=self.theme_manager.get_color("background"),
+            text_color=self.theme_manager.get_color("text_primary"),
             height=300
         )
         self.text_editor.grid(row=6, column=0, sticky='nsew', pady=(0, 15))
@@ -955,7 +1218,7 @@ class ModelManagerFrame(ScreenBase):
             return
 
         nome = self.listbox.get(selection[0])
-        self.selected_label.configure(text=f"Editando: {nome}")
+        self._set_selected_label(f"Editando: {nome}")
 
         modelo = self.engine.modelos.get(nome)
         texto = ""
@@ -968,12 +1231,16 @@ class ModelManagerFrame(ScreenBase):
         self.text_editor.delete("1.0", tk.END)
         self.text_editor.insert("1.0", texto)
 
+    def _set_selected_label(self, text: str) -> None:
+        if self.selected_label is not None:
+            self.selected_label.configure(text=text)
+
     def _adicionar(self) -> None:
         """Cria diálogo com novo modelo para adicionar."""
         dialog = tk.Toplevel(self)
         dialog.title("Novo Modelo")
         dialog.geometry("600x380")
-        dialog.transient(self.master)
+        dialog.transient(self.winfo_toplevel())
         dialog.grab_set()
 
         ctk.CTkLabel(dialog, text="Nome:", font=get_font(11)).pack(anchor="w", padx=10, pady=(10, 0))
@@ -1012,9 +1279,9 @@ class ModelManagerFrame(ScreenBase):
         novo_texto = self.text_editor.get("1.0", tk.END).strip()
 
         if novo_texto and self.engine.update_modelo(nome, novo_texto):
-            self.selected_label.configure(text=f"✅ {nome} salvo!")
+            self._set_selected_label(f"✅ {nome} salvo!")
             self.on_update_callback()
-            self.after(1500, lambda: self.selected_label.configure(text=f"Editando: {nome}"))
+            self.after(1500, lambda: self._set_selected_label(f"Editando: {nome}"))
 
     def _deletar(self) -> None:
         """Remove modelo do engine."""
@@ -1029,7 +1296,8 @@ class ModelManagerFrame(ScreenBase):
             self._refresh_listbox()
             if self.text_editor:
                 self.text_editor.delete("1.0", tk.END)
-            self.selected_label.configure(text="Modelo deletado")
+            if self.selected_label is not None:
+                self.selected_label.configure(text="Modelo deletado")
             self.on_update_callback()
 
     def _on_theme_change(self, is_dark: bool) -> None:
@@ -1152,7 +1420,7 @@ class GeradorSEIApp(ctk.CTk):
                 pass
     
     def _build_ui(self):
-        """Constrói interface moderna com sidebar elegante."""
+        """Constrói interface moderna com sidebar elegante e status bar."""
         # Força o app a ser responsivo ao redimensionar
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1)
@@ -1162,6 +1430,7 @@ class GeradorSEIApp(ctk.CTk):
         main_container.grid(row=0, column=0, sticky='nsew')
         main_container.grid_rowconfigure(0, weight=0)
         main_container.grid_rowconfigure(1, weight=1)
+        main_container.grid_rowconfigure(2, weight=0)  # Status bar
         main_container.grid_columnconfigure(0, weight=1)
 
         # Header elegante
@@ -1183,6 +1452,9 @@ class GeradorSEIApp(ctk.CTk):
         self.screen_container.grid_rowconfigure(0, weight=1)
         self.screen_container.grid_columnconfigure(0, weight=1)
         
+        # Status Bar
+        self._create_status_bar(main_container)
+        
         # Criar telas
         self._create_screens()
         
@@ -1193,10 +1465,17 @@ class GeradorSEIApp(ctk.CTk):
         header.grid(row=0, column=0, columnspan=2, sticky='ew')
         header.grid_propagate(False)
         
+        self.sidebar_toggle_btn = ctk.CTkButton(header, text="☰",
+                                       width=45, height=45, command=self._toggle_sidebar,
+                                       fg_color="transparent", hover_color=get_color_tuple("surface"),
+                                       border_width=1, border_color=get_color_tuple("border"),
+                                       corner_radius=8)
+        self.sidebar_toggle_btn.pack(side="left", padx=15, pady=12)
+
         title = ctk.CTkLabel(header, text="Gerador SEI", 
                             font=ctk.CTkFont(size=20, weight="bold"),
                             text_color=get_color_tuple("text_primary"))
-        title.pack(side="left", padx=25, pady=20)
+        title.pack(side="left", padx=10, pady=20)
         
         self.theme_btn = ctk.CTkButton(header, text="☀️" if self.theme_manager.is_dark else "🌙",
                                        width=45, height=45, command=self._toggle_theme,
@@ -1205,8 +1484,28 @@ class GeradorSEIApp(ctk.CTk):
                                        corner_radius=8)
         self.theme_btn.pack(side="right", padx=25, pady=12)
     
+    def _create_status_bar(self, parent):
+        """Cria status bar no rodapé."""
+        status_bar = ctk.CTkFrame(parent, fg_color=get_color_tuple("surface"),
+                                 height=30, corner_radius=0)
+        status_bar.grid(row=2, column=0, sticky='ew')
+        status_bar.grid_propagate(False)
+        
+        # Versão do app
+        version_label = ctk.CTkLabel(status_bar, text="v1.0.0",
+                                    font=get_font(9),
+                                    text_color=get_color_tuple("text_secondary"))
+        version_label.pack(side="left", padx=15, pady=5)
+        
+        # Tema atual
+        self.theme_status_label = ctk.CTkLabel(status_bar, 
+                                              text=f"Tema: {'Escuro' if self.theme_manager.is_dark else 'Claro'}",
+                                              font=get_font(9),
+                                              text_color=get_color_tuple("text_secondary"))
+        self.theme_status_label.pack(side="right", padx=15, pady=5)
+    
     def _create_sidebar(self, parent):
-        """Cria sidebar elegante."""
+        """Cria sidebar elegante com hover distintos."""
         self.sidebar = ctk.CTkFrame(parent, fg_color=get_color_tuple("surface"),
                                    width=220, corner_radius=0)
         self.sidebar.grid(row=0, column=0, sticky='nsw', padx=0, pady=0)
@@ -1221,21 +1520,40 @@ class GeradorSEIApp(ctk.CTk):
         sidebar_title.pack(padx=20, pady=(25, 15))
         
         # Botões de navegação
-        nav_items = [
+        self.nav_items = [
             ("Gerar Despacho", "gerar"),
             ("Gerenciar Modelos", "modelos"),
             ("Histórico", "historico"),
             ("Mensagens", "mensagens")
         ]
         
-        for text, screen_name in nav_items:
+        for text, screen_name in self.nav_items:
             icon = self.icons.get(screen_name)
             btn = ctk.CTkButton(self.sidebar, text=text, height=50, 
                                font=ctk.CTkFont(size=11, weight="bold"),
-                               fg_color="transparent", hover_color=get_color_tuple("primary"),
+                               fg_color="transparent", 
+                               hover_color=get_color_tuple("primary"),
+                               text_color=get_color_tuple("text_primary"),
                                border_width=0, corner_radius=8, image=icon,
                                command=lambda s=screen_name: self._switch_screen(s))
             btn.pack(fill="x", padx=15, pady=5)
+            
+            # Hover effect mais distinto
+            def on_enter(e, b=btn):
+                if b != self.nav_buttons.get(self.current_screen):
+                    b.configure(fg_color=get_color_tuple("surface"), 
+                              text_color=get_color_tuple("primary"),
+                              border_width=1, border_color=get_color_tuple("primary"))
+            
+            def on_leave(e, b=btn):
+                if b != self.nav_buttons.get(self.current_screen):
+                    b.configure(fg_color="transparent", 
+                              text_color=get_color_tuple("text_primary"),
+                              border_width=0)
+            
+            btn.bind("<Enter>", on_enter)
+            btn.bind("<Leave>", on_leave)
+            
             self.nav_buttons[screen_name] = btn
     
     def _create_screens(self):
@@ -1317,14 +1635,58 @@ class GeradorSEIApp(ctk.CTk):
         # Também adiciona à tela de mensagens para histórico
         self.screens["mensagens"].add_message(title, message, msg_type)
     
-    def _load_despacho(self, texto):
-        """Carrega despacho na tela de geração."""
-        self.screens["gerar"].text_saida.configure(state="normal")
-        self.screens["gerar"].text_saida.delete("1.0", ctk.END)
-        self.screens["gerar"].text_saida.insert("1.0", texto)
-        self.screens["gerar"].text_saida.configure(state="normal")
-        self.historico.append(texto)
+    def _reutilizar_dados(self, item):
+        """Tenta extrair dados do texto gerado e preencher campos."""
+        gerar_screen = self.screens["gerar"]
+        dados_extraidos = {}
+
+        if isinstance(item, dict):
+            dados_extraidos = {
+                "oficio": item.get("oficio", ""),
+                "prazo": item.get("prazo", ""),
+                "sei_oficio": item.get("sei_oficio", ""),
+                "sei_manifestacao": item.get("sei", ""),
+                "protocolo": item.get("protocolo", ""),
+                "resumo": item.get("resumo", "")
+            }
+            texto = item.get("texto", "")
+        else:
+            texto = item
+            # Esta é uma implementação simplificada de fallback para string
+            for line in texto.split("\n"):
+                line = line.strip()
+                if "Ofício" in line and any(char.isdigit() for char in line):
+                    match = re.search(r"(\d+/\d{4})", line)
+                    if match:
+                        dados_extraidos["oficio"] = match.group(1)
+                elif "SEI" in line and any(char.isdigit() for char in line):
+                    match = re.search(r"(\d+)", line)
+                    if match and "Manifestação" in line:
+                        dados_extraidos["sei_manifestacao"] = match.group(1)
+                    elif match and "Ofício" in line:
+                        dados_extraidos["sei_oficio"] = match.group(1)
+                elif "OUV-" in line:
+                    match = re.search(r"(OUV-\d+/\d{4})", line)
+                    if match:
+                        dados_extraidos["protocolo"] = match.group(1)
+                elif "Prazo" in line or "até" in line.lower():
+                    match = re.search(r"(\d{2}/\d{2}/\d{4})", line)
+                    if match:
+                        dados_extraidos["prazo"] = match.group(1)
+
+        for idx, key in enumerate(["oficio", "prazo", "sei_oficio", "sei_manifestacao", "protocolo", "resumo"]):
+            if key in dados_extraidos and idx < len(gerar_screen.inputs):
+                value = dados_extraidos[key]
+                if value is not None:
+                    gerar_screen.inputs[idx].delete(0, tk.END)
+                    gerar_screen.inputs[idx].insert(0, value)
+
+        gerar_screen.text_saida.configure(state="normal")
+        gerar_screen.text_saida.delete("1.0", ctk.END)
+        gerar_screen.text_saida.insert("1.0", texto)
+
         self._switch_screen("gerar")
+        self._show_message("Sucesso", "Dados reutilizados! Verifique e ajuste se necessário.", "success")
     
     def _on_modelos_update(self):
         """Callback quando modelos são atualizados."""
@@ -1344,21 +1706,40 @@ class GeradorSEIApp(ctk.CTk):
         """Callback quando tema muda."""
         ctk.set_appearance_mode("dark" if is_dark else "light")
         self.theme_btn.configure(text="☀️" if is_dark else "🌙")
+        self.theme_status_label.configure(text=f"Tema: {'Escuro' if is_dark else 'Claro'}")
         self._salvar_config()
     
     def _toggle_theme(self):
         """Alterna tema."""
         self.theme_manager.toggle_theme()
-    
 
-    
-    def copiar_para_clipboard(self):
+    def _toggle_sidebar(self):
+        """Alterna entre sidebar expandida e recolhida"""
+        if getattr(self, 'sidebar_collapsed', False):
+            self.sidebar.configure(width=220)
+            for label, screen_name in self.nav_items:
+                btn = self.nav_buttons.get(screen_name)
+                if btn:
+                    btn.configure(text=label, width=220)
+            self.sidebar_collapsed = False
+        else:
+            self.sidebar.configure(width=70)
+            for _, screen_name in self.nav_items:
+                btn = self.nav_buttons.get(screen_name)
+                if btn:
+                    btn.configure(text="", width=56)
+            self.sidebar_collapsed = True
+
+    def copiar_para_clipboard(self, texto: Optional[str] = None):
         """Copia despacho para clipboard."""
-        texto = self.text_saida.get("1.0", ctk.END).strip()
-        if not texto or texto == "Texto gerado aparecerá aqui.":
+        if texto is None:
+            texto = self.screens["gerar"].text_saida.get("1.0", ctk.END).strip()
+        texto = texto.strip() if isinstance(texto, str) else ""
+
+        if not texto or texto == "O despacho gerado aparecerá aqui após preencher os dados acima.":
             self._show_message("Erro", "Nada para copiar.", "error")
             return
-        
+
         self.clipboard_clear()
         self.clipboard_append(texto)
         self._show_message("Sucesso", "Copiado para área de transferência!", "success")
