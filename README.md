@@ -1,4 +1,4 @@
-# Gerador SEI - Gerador de Despachos
+# 🎯 Gerador SEI - v2.0
 
 Uma aplicação desktop moderna e intuitiva para geração de despachos SEI (Sistema Eletrônico de Informações), desenvolvida em Python com interface gráfica elegante usando CustomTkinter.
 
@@ -8,27 +8,39 @@ Uma aplicação desktop moderna e intuitiva para geração de despachos SEI (Sis
 
 ### 📝 Geração de Despachos
 - **4 Modelos Pré-definidos**: HVEP, Castração, Condições HVEP e Cronograma
-- **Modelos Customizáveis**: Adicione, edite ou remova modelos personalizados
-- **Campos Validados**: Validação automática de SEI, protocolos OUV e datas
+- **Modelos Customizáveis**: Adicione, edite, remova ou **duplique** modelos personalizados
+- **Campos Validados**: Validação em tempo real com feedback visual (borda colorida)
+- **Validação de SEI**: Formato validado automaticamente (4-12 dígitos)
+- **Validação de Protocolo**: Formato OUV-XXXX/YYYY com checagem automática
 - **Template Engine**: Sistema de placeholders inteligentes ({NUM_OFICIO}, {SEI_OFICIO}, etc.)
 
-### 🎨 Interface Moderna
-- **Design Responsivo**: Layout que se adapta ao tamanho da janela
-- **Tema Dark/Light**: Alternância automática com salvamento de preferência
-- **Sidebar Navegação**: Navegação intuitiva entre telas
+### 🎨 Interface Moderna v2.0
+- **Design Responsivo**: Layout que se adapta perfeitamente ao tamanho da janela
+- **Tema Dark/Light**: Alternância com `F11` com salvamento de preferência
+- **Sidebar Retrátil**: Menu de navegação elegante e compacto
 - **Tooltips Informativos**: Dicas contextuais em todos os campos
+- **Cards Modernos**: Histórico exibido em cards com ações diretas
+- **Blocos Agrupados**: Dados visualmente organizados por seção (Documento, Manifestação, etc.)
+- **Fonte Monoespaciada**: Apresentação de despachos em Consolas/Courier para melhor legibilidade
 
 ### 📊 Gerenciamento Avançado
-- **Histórico Completo**: Visualização dos últimos despachos gerados
+- **Histórico em Cards**: Últimos despachos com preview e ações de reutilização
+- **Busca de Modelos**: Filtro instantâneo na lista de modelos disponíveis
+- **Atalhos de Prazo**: Botões rápidos `+5d`, `+15d`, `+30d` para cálculo automático
+- **Cálculo de Data**: Função `calcular_data_prazo()` centralizada no engine
+- **Reutilizar Dados**: Carregue dados de despachos anteriores com um clique
+- **Copiar + Limpar**: Botão dedicado que copia e reseta os campos
 - **Persistência de Dados**: Salvamento automático em JSON
 - **Exportação PDF**: Geração de documentos formatados
-- **Copiar para Clipboard**: Cópia rápida do texto gerado
+- **Copiar para Clipboard**: Cópia automática com feedback visual
 
 ### 🛠️ Recursos Técnicos
-- **Validação Robusta**: Verificação de formatos e dados obrigatórios
-- **Calendário Integrado**: Seleção visual de datas
-- **Atalhos de Teclado**: Navegação rápida (Ctrl+G, Ctrl+S, F11, etc.)
-- **Logs e Mensagens**: Sistema de feedback visual
+- **Validação Robusta**: Checagem em tempo real com feedback imediato
+- **Calendário Integrado**: Seletor visual de datas com navegação
+- **Atalhos de Teclado**: Navegação rápida (`Ctrl+G`, `Ctrl+S`, `F11`, etc.)
+- **Sistema de Mensagens**: Feedback visual com título, mensagem e ícone
+- **Observer Pattern**: Sistema de temas com suporte a múltiplos observadores
+- **Monitoramento Live**: Validação de campos enquanto você digita
 
 ## 🚀 Instalação
 
@@ -78,10 +90,9 @@ pip install customtkinter tkcalendar reportlab pandas openpyxl matplotlib
 | `Ctrl+S` | Salvar Dados |
 | `Ctrl+L` | Carregar Dados |
 | `Ctrl+E` | Exportar PDF |
-| (não aplicado) | `Ctrl+C` diretamente copia seleção do campo Resultado |
-| `Ctrl+H` | Histórico |
-| `Ctrl+M` | Gerenciar Modelos |
-| `F11` | Alternar Tema |
+| `Ctrl+Q` | Sair da aplicação |
+| `F11` | Alternar Tema (Dark/Light) |
+| `.` (data picker) | Abrir calendário |
 
 ## 🏗️ Arquitetura
 
@@ -106,25 +117,73 @@ gerador_sei/
 ## 📁 Estrutura de Dados
 
 ### Arquivos de Configuração
-- `config.json`: Configurações da aplicação (tema, preferências)
-- `dados_ultimo.json`: Últimos dados inseridos
+- `config.json`: Configurações da aplicação (tema ativo, preferências de UI)
+- `dados_ultimo.json`: Últimos dados inseridos (para carregamento rápido)
 - `modelos_custom.json`: Modelos personalizados criados pelo usuário
 
-### Formato dos Templates
-```python
-# Exemplo de template
-MODELO_HVEP = """
-Prezado(a) {NOME_DESTINATARIO},
+### Formato dos Arquivos JSON
 
-Informamos que o Ofício nº {NUM_OFICIO}, SEI {SEI_OFICIO},
-protocolado em {PROTOCOLO}, trata sobre {RESUMO}.
-
-O prazo para atendimento é {PRAZO}.
-
-Atenciosamente,
-Equipe SEI
-"""
+**dados_ultimo.json**
+```json
+{
+  "campo_0": "778/2026",
+  "campo_1": "01/05/2026",
+  "campo_2": "198654234",
+  "campo_3": "220622554",
+  "campo_4": "OUV-078543/2026",
+  "campo_5": "Falta de vagas de castração",
+  "modelo": "HVeP - Atendimento/HVeP"
+}
 ```
+
+**modelos_custom.json**
+```json
+{
+  "Meu Modelo": "Conteúdo do {SEI_OFICIO} com placeholders..."
+}
+```
+
+### Placeholders Disponíveis
+- `{NUM_OFICIO}` - Número do ofício
+- `{SEI_OFICIO}` - SEI do ofício
+- `{SEI_MANIFESTACAO}` - SEI da manifestação
+- `{PROTOCOLO}` - Protocolo OUV
+- `{PROTOCOLO}` - Resumo da manifestação
+- `{PRAZO}` - Data de prazo calculada
+```
+
+## 📋 Changelog (v2.0)
+
+### Novo
+- ✨ Atalhos de prazo (`+5d`, `+15d`, `+30d`) para cálculo rápido
+- ✨ Cards modernos para exibição do histórico
+- ✨ Validação visual em tempo real (cores na borda dos campos)
+- ✨ Sidebar retrátil para economia de espaço
+- ✨ Busca instantânea de modelos
+- ✨ Duplicar modelo existente
+- ✨ Botão "Copiar e Limpar" combinado
+- ✨ Feedback visual de processamento
+- ✨ Função `calcular_data_prazo()` centralizada
+
+### Melhorado
+- 🔧 Layout em blocos de seções (Documento, Manifestação, etc.)
+- 🔧 Fonte monoespaciada (Consolas) para melhor legibilidade de despachos
+- 🔧 Validação de SEI e Protocolo com regex
+- 🔧 Status bar com informações de processamento
+- 🔧 Histórico com ações diretas (reutilizar, copiar)
+- 🔧 Atalhos de teclado expandidos
+
+### Corrigido
+- 🐛 Problemas de layout com sobreposição de campos
+- 🐛 Erros de tipos no analyzer (Pylance/mypy)
+- 🐛 Tratamento de atributos opcional (`None`)
+
+## 🚀 Performance
+
+- ⚡ Carregamento instantâneo de modelos
+- ⚡ Filtro de busca sem lag
+- ⚡ Renderização de cards otimizada
+- ⚡ Cálculo de datas eficiente
 
 ## 🤝 Contribuição
 
@@ -147,19 +206,8 @@ Encontrou um bug ou tem uma sugestão? Abra uma [issue](https://github.com/seu-u
 - [CustomTkinter](https://github.com/TomSchimansky/CustomTkinter) - Framework de interface moderna
 - [tkcalendar](https://github.com/j4321/tkcalendar) - Widget de calendário
 - [ReportLab](https://www.reportlab.com/) - Geração de PDFs
+- [PIL](https://python-pillow.org/) - Processamento de imagens
 
 ---
 
 **Desenvolvido com ❤️ para facilitar o trabalho com SEI**
-- `modelos_custom.json`: Modelos customizados adicionados pelo usuário.
-- Arquivos PDF exportados conforme solicitado.
-
-## Melhorias Implementadas
-
-- Validação robusta de campos.
-- Persistência de dados e configurações.
-- Exportação para PDF.
-- Interface aprimorada com tooltips e menu.
-- Histórico de despachos.
-- Gerenciamento dinâmico de modelos via interface (adicionar, editar, deletar).
-- Atalhos de teclado para produtividade.
