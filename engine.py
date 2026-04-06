@@ -1,3 +1,6 @@
+# Arquivo comentado em português para explicar cada parte do código.
+# As anotações foram adicionadas antes de classes e funções para facilitar o entendimento.
+
 """
 Engine module for Gerador SEI
 Contains business logic for text generation, validation, and data processing
@@ -16,9 +19,11 @@ from sei_templates import (
     MODELO_HVEP, MODELO_CASTRACAO, MODELO_CONDICOES_HVEP, MODELO_CRONOGRAMA_CASTRACAO
 )
 
+# Classe SEIEngine: define comportamento e estrutura desta parte do aplicativo.
 class SEIEngine:
     """Business logic engine for SEI document generation."""
 
+    # Função interna __init__(modelos_file: str = "modelos_custom.json"): executa lógica relacionada a init.
     def __init__(self, modelos_file: str = "modelos_custom.json"):
         self.modelos_file = modelos_file
         self.modelos: Dict[str, Any] = {

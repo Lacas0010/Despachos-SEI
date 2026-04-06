@@ -1,4 +1,7 @@
-﻿"""
+﻿# Arquivo comentado em português para explicar cada parte do código.
+# As anotações foram adicionadas antes de classes e funções para facilitar o entendimento.
+
+"""
 Gerador SEI - Main Application
 Modern interface for SEI document generation
 """
@@ -20,9 +23,11 @@ from theme_config import (
 from engine import SEIEngine
 
 
+# Classe Tooltip: define comportamento e estrutura desta parte do aplicativo.
 class Tooltip:
     """Tooltips para widgets."""
 
+    # Função interna __init__(widget: tk.Widget, text: str): executa lógica relacionada a init.
     def __init__(self, widget: tk.Widget, text: str):
         self.widget = widget
         self.text = text
@@ -48,9 +53,11 @@ class Tooltip:
             self.tooltip_window = None
 
 
+# Classe ScreenBase: define comportamento e estrutura desta parte do aplicativo.
 class ScreenBase(ctk.CTkFrame):
     """Classe base para todas as telas com suporte a tema."""
 
+    # Função interna __init__(parent, theme_manager: ThemeManager, **kwargs): executa lógica relacionada a init.
     def __init__(self, parent, theme_manager: ThemeManager, **kwargs):
         super().__init__(parent, **kwargs)
         self.theme_manager = theme_manager
@@ -67,15 +74,18 @@ class ScreenBase(ctk.CTkFrame):
         """Override em subclasses se necessário atualizar cores."""
         pass
     
+    # Função show(): executa lógica relacionada a show.
     def show(self):
         """Mostra a tela."""
         self.grid(row=0, column=0, sticky='nsew')
     
+    # Função hide(): executa lógica relacionada a hide.
     def hide(self):
         """Esconde a tela."""
         self.grid_forget()
 
 
+# Classe GenerarScreen: define comportamento e estrutura desta parte do aplicativo.
 class GenerarScreen(ScreenBase):
     """Tela completa para geração de despachos."""
 
@@ -163,6 +173,7 @@ class GenerarScreen(ScreenBase):
         main_frame.grid_rowconfigure(2, weight=1)
         main_frame.grid_columnconfigure(0, weight=1)
 
+    # Função interna _create_form(parent): executa lógica relacionada a create form.
     def _create_form(self, parent):
         """Cria formulário com layout em grid e agrupamento lógico."""
         # Frame do formulário
@@ -205,16 +216,28 @@ class GenerarScreen(ScreenBase):
                                 text_color=get_color_tuple("text_secondary"))
             label.grid(row=row, column=col, sticky="w", padx=15, pady=(10, 5))
             
-            # Input
+            # Input com transições de foco
             entry = ctk.CTkEntry(doc_frame, placeholder_text=placeholder,
                                 font=get_font(12), height=42,
                                 border_width=1, corner_radius=10,
-                                fg_color=get_color_tuple("background"))
+                                fg_color=get_color_tuple("background"),
+                                border_color=get_color_tuple("border"))
             entry.grid(row=row+1, column=col, sticky="ew", padx=15, pady=(0, 15))
             
-            self.inputs[len(self.inputs)] = entry
+            # Bind focus transitions
+            # Função on_focus_in(e, ent=entry): executa lógica relacionada a on focus in.
+            def on_focus_in(e, ent=entry):
+                ent.configure(border_color=self.theme_manager.get_focus_border_color())
+            
+            # Função on_focus_out(e, ent=entry, name=label_text): executa lógica relacionada a on focus out.
+            def on_focus_out_field(e, ent=entry, name=label_text):
+                self._validate_field(ent, name)
+            
+            entry.bind("<FocusIn>", on_focus_in)
+            entry.bind("<FocusOut>", on_focus_out_field)
             entry.bind("<KeyRelease>", self._validate_live)
-            entry.bind("<FocusOut>", self._validate_live)
+            
+            self.inputs[len(self.inputs)] = entry
             Tooltip(entry, label_text)
         
         # Bloco 2: Dados da Manifestação
@@ -282,16 +305,27 @@ class GenerarScreen(ScreenBase):
                 entry = ctk.CTkEntry(manifest_frame, placeholder_text=placeholder,
                                     font=get_font(12), height=42,
                                     border_width=1, corner_radius=10,
-                                    fg_color=get_color_tuple("background"))
+                                    fg_color=get_color_tuple("background"),
+                                    border_color=get_color_tuple("border"))
                 entry.grid(row=row+1, column=col, columnspan=colspan, sticky="ew", 
                           padx=15, pady=(0, 15))
                 if colspan == 1:
                     manifest_frame.grid_columnconfigure(col, weight=1)
             
-            self.inputs[len(self.inputs)] = entry
+            # Bind focus transitions para todos os campos
+            # Função on_focus_in(e, ent=entry): executa lógica relacionada a on focus in.
+            def on_focus_in(e, ent=entry):
+                ent.configure(border_color=self.theme_manager.get_focus_border_color())
+            
+            # Função on_focus_out(e, ent=entry, name=label_text): executa lógica relacionada a on focus out.
+            def on_focus_out_manifest(e, ent=entry, name=label_text):
+                self._validate_field(ent, name)
+            
+            entry.bind("<FocusIn>", on_focus_in)
+            entry.bind("<FocusOut>", on_focus_out_manifest)
             entry.bind("<KeyRelease>", lambda e, ent=entry, name=label_text: (self._validate_live(), self._validate_field(ent, name)))
-            entry.bind("<FocusIn>", lambda e, ent=entry: ent.configure(border_color=get_color_tuple("primary")))
-            entry.bind("<FocusOut>", lambda e, ent=entry, name=label_text: self._validate_field(ent, name))
+            
+            self.inputs[len(self.inputs)] = entry
             Tooltip(entry, label_text)
 
         # Modelo
@@ -312,18 +346,21 @@ class GenerarScreen(ScreenBase):
         # Botões
         self._create_buttons(form_frame)
     
+    # Função interna _create_buttons(parent): executa lógica relacionada a create buttons.
     def _create_buttons(self, parent):
-        """Cria botões diferenciados."""
+        """Cria botões diferenciados com animações."""
         buttons_frame = ctk.CTkFrame(parent, fg_color="transparent")
         buttons_frame.grid(row=10, column=0, columnspan=2, sticky="ew", padx=20, pady=(10, 20))
         
-        # Botão Gerar (primário)
+        # Botão Gerar (primário) com animação
         gerar_icon = self.icons.get("gerar")
-        gerar_btn = ctk.CTkButton(buttons_frame, text="Gerar Despacho", command=self._on_gerar,
-                                 height=45, font=get_font(12, "bold"),
-                                 fg_color=get_color_tuple("primary"),
-                                 hover_color="#0056CC", corner_radius=10, image=gerar_icon)
-        gerar_btn.pack(side="left", padx=(0, 10), expand=True)
+        self.gerar_btn = ctk.CTkButton(buttons_frame, text="Gerar Despacho", 
+                                     command=self._on_gerar_animated,
+                                     height=45, font=get_font(12, "bold"),
+                                     fg_color=self.theme_manager.get_color("primary"),
+                                     hover_color=self.theme_manager.get_hover_color("primary"), 
+                                     corner_radius=10, image=gerar_icon)
+        self.gerar_btn.pack(side="left", padx=(0, 10), expand=True)
         
         # Botões secundários
         actions = [("💾 Salvar", self._on_salvar), ("📥 Carregar", self._on_carregar),
@@ -332,12 +369,13 @@ class GenerarScreen(ScreenBase):
         for text, cmd in actions:
             btn = ctk.CTkButton(buttons_frame, text=text, command=cmd, height=45,
                                font=get_font(11, "bold"),
-                               fg_color=get_color_tuple("transparent"), border_width=1,
+                               fg_color="transparent", border_width=1,
                                border_color=get_color_tuple("border"),
                                corner_radius=8)
             btn.pack(side="left", padx=5)
             Tooltip(btn, text)
     
+    # Função interna _create_output_area(parent): executa lógica relacionada a create output area.
     def _create_output_area(self, parent):
         """Cria área de resultado com fonte monoespaçada."""
         output_frame = ctk.CTkFrame(parent, fg_color=get_color_tuple("surface"),
@@ -407,6 +445,7 @@ class GenerarScreen(ScreenBase):
                                         font=get_font(11))
         self.status_label.grid(row=2, column=0, sticky='w', padx=20, pady=(0, 20))
     
+    # Função interna _open_date_picker(entry): executa lógica relacionada a open date picker.
     def _open_date_picker(self, entry):
         """Abre seletor de data customizado."""
         # Janela do date picker
@@ -485,6 +524,7 @@ class GenerarScreen(ScreenBase):
                                  hover_color="#0056CC")
         today_btn.pack(fill="x", padx=15, pady=(0, 15))
     
+    # Função interna _change_month(year_var, month_var, delta, days_frame, current_date, entry, picker, month_label): executa lógica relacionada a change month.
     def _change_month(self, year_var, month_var, delta, days_frame, current_date, entry, picker, month_label):
         """Muda mês e atualiza grid."""
         month_var.set(month_var.get() + delta)
@@ -516,6 +556,7 @@ class GenerarScreen(ScreenBase):
         # Repopular dias
         self._populate_days(days_frame, year_var, month_var, current_date, entry, picker, month_label)
     
+    # Função interna _populate_days(parent, year_var, month_var, current_date, entry, picker, month_label=None): executa lógica relacionada a populate days.
     def _populate_days(self, parent, year_var, month_var, current_date, entry, picker, month_label=None):
         """Popula grid de dias."""
         import calendar
@@ -542,6 +583,7 @@ class GenerarScreen(ScreenBase):
                 
                 day_btn.grid(row=week_idx+1, column=day_idx, padx=1, pady=1)
     
+    # Função interna _select_date(day, year, month, entry, picker): executa lógica relacionada a select date.
     def _select_date(self, day, year, month, entry, picker):
         """Seleciona data."""
         selected_date = datetime.date(year, month, day)
@@ -550,6 +592,7 @@ class GenerarScreen(ScreenBase):
         picker.destroy()
         self._validate_live()
     
+    # Função interna _select_today(entry, picker): executa lógica relacionada a select today.
     def _select_today(self, entry, picker):
         """Seleciona data de hoje."""
         today = datetime.date.today()
@@ -558,11 +601,13 @@ class GenerarScreen(ScreenBase):
         picker.destroy()
         self._validate_live()
     
+    # Função interna _on_theme_change(is_dark): executa lógica relacionada a on theme change.
     def _on_theme_change(self, is_dark):
         """Atualiza cores ao mudar tema."""
         self.configure(fg_color=get_color_tuple("background"))
         # As cores dos frames e inputs serão atualizadas automaticamente pelo ThemeManager
     
+    # Função interna _validate_live(event=None): executa lógica relacionada a validate live.
     def _validate_live(self, event=None):
         """Validação ao vivo com feedback visual."""
         if self.status_label is None:
@@ -580,6 +625,7 @@ class GenerarScreen(ScreenBase):
                 text_color=get_color_tuple("success")
             )
     
+    # Função interna _validar_campos(silent=False): executa lógica relacionada a validar campos.
     def _validar_campos(self, silent=False):
         """Valida campos com engine."""
         values = [self.inputs[i].get().strip() for i in range(6)]
@@ -599,6 +645,22 @@ class GenerarScreen(ScreenBase):
 
         return erros
     
+    # Função interna _on_gerar_animated(): executa lógica relacionada a on gerar animated.
+    def _on_gerar_animated(self):
+        """Gera despacho com animações completas."""
+        from ui_animations import UIAnimations
+        
+        # Animação do botão: shrink
+        UIAnimations.button_press_animation(self.gerar_btn, duration=150)
+        
+        # Muda ícone para spinner/loading
+        original_text = self.gerar_btn.cget("text")
+        UIAnimations.icon_swap_animation(self.gerar_btn, original_text, "⏳ Gerando...", duration=1000)
+        
+        # Pequeno delay antes de executar a geração
+        self.after(200, self._on_gerar)
+    
+    # Função interna _on_gerar(): executa lógica relacionada a on gerar.
     def _on_gerar(self):
         """Gera despacho e copia automaticamente com feedback visual."""
         if self._validar_campos():
@@ -628,11 +690,9 @@ class GenerarScreen(ScreenBase):
         try:
             texto = self.engine.generate_despacho(despacho_data)
             
-            self.text_saida.configure(state="normal")
-            self.text_saida.delete("1.0", ctk.END)
-            self.text_saida.insert("1.0", texto)
-            # deixar em estado normal para permitir seleção e scroll contínuos
-            self.text_saida.configure(state="normal")
+            # Fade-in do texto no resultado
+            from ui_animations import UIAnimations
+            UIAnimations.text_fade_in(self.text_saida, texto, duration=800)
             
             # Copia automaticamente para clipboard
             root = self.winfo_toplevel()
@@ -675,6 +735,7 @@ class GenerarScreen(ScreenBase):
             self._reset_visual_feedback(original_border_color)
             self.on_show_message("Erro", f"Erro na geração: {str(e)}", "error")
     
+    # Função interna _show_generation_feedback(): executa lógica relacionada a show generation feedback.
     def _show_generation_feedback(self):
         """Mostra feedback visual de geração."""
         if self.status_label is None:
@@ -684,12 +745,14 @@ class GenerarScreen(ScreenBase):
             text_color=get_color_tuple("primary")
         )
     
+    # Função interna _reset_visual_feedback(border_color): executa lógica relacionada a reset visual feedback.
     def _reset_visual_feedback(self, border_color):
         """Reseta o feedback visual."""
         if self.text_saida is not None:
             self.text_saida.configure(border_color=border_color)
         self._validate_live()
     
+    # Função interna _on_template_selected(event=None): executa lógica relacionada a on template selected.
     def _on_template_selected(self, event=None):
         """Atualiza resumo quando modelo muda."""
         modelo = self.template_var.get()
@@ -700,6 +763,7 @@ class GenerarScreen(ScreenBase):
         else:
             self.inputs[4].configure(state="normal")
     
+    # Função interna _on_salvar(): executa lógica relacionada a on salvar.
     def _on_salvar(self):
         """Salva dados."""
         valores = {f"campo_{i}": self.inputs[i].get().strip() for i in range(6)}
@@ -711,6 +775,7 @@ class GenerarScreen(ScreenBase):
         except Exception as e:
             self.on_show_message("Erro", f"Erro: {str(e)}", "error")
     
+    # Função interna _on_carregar(): executa lógica relacionada a on carregar.
     def _on_carregar(self):
         """Carrega dados."""
         if not os.path.exists("dados_ultimo.json"):
@@ -728,6 +793,7 @@ class GenerarScreen(ScreenBase):
         except Exception as e:
             self.on_show_message("Erro", f"Erro: {str(e)}", "error")
     
+    # Função interna _on_pdf(): executa lógica relacionada a on pdf.
     def _on_pdf(self):
         """Exporta PDF."""
         if self.text_saida is None:
@@ -751,6 +817,7 @@ class GenerarScreen(ScreenBase):
         except Exception as e:
             self.on_show_message("Erro", f"Erro ao exportar PDF: {str(e)}", "error")
     
+    # Função interna _on_copiar(): executa lógica relacionada a on copiar.
     def _on_copiar(self):
         """Copia para clipboard com feedback."""
         if self.text_saida is None:
@@ -773,6 +840,7 @@ class GenerarScreen(ScreenBase):
             )
         self.after(2000, lambda: self._validate_live())  # Reset status after 2s
     
+    # Função interna _on_copiar_limpar(): executa lógica relacionada a on copiar limpar.
     def _on_copiar_limpar(self):
         """Copia para clipboard e limpa todos os campos."""
         if self.text_saida is None:
@@ -810,9 +878,11 @@ class GenerarScreen(ScreenBase):
         self.after(3000, lambda: self._validate_live())  # Reset status after 3s
 
 
+# Classe HistoricoScreen: define comportamento e estrutura desta parte do aplicativo.
 class HistoricoScreen(ScreenBase):
     """Tela de histórico de despachos em cards modernos."""
     
+    # Função interna __init__(parent, theme_manager, historico, **kwargs): executa lógica relacionada a init.
     def __init__(self, parent, theme_manager, historico, **kwargs):
         super().__init__(parent, theme_manager=theme_manager, **kwargs)
         self.historico = historico
@@ -820,6 +890,7 @@ class HistoricoScreen(ScreenBase):
         
         self._build_ui()
     
+    # Função interna _build_ui(): executa lógica relacionada a build ui.
     def _build_ui(self):
         """Constrói interface."""
         self.grid_rowconfigure(0, weight=1)
@@ -854,14 +925,16 @@ class HistoricoScreen(ScreenBase):
         
         self._refresh()
     
+    # Função interna _on_theme_change(is_dark): executa lógica relacionada a on theme change.
     def _on_theme_change(self, is_dark):
         """Atualiza cores."""
         self.configure(fg_color=get_color_tuple("background"))
         if self.cards_container:
             self.cards_container.configure(border_color=get_color_tuple("border"))
     
+    # Função interna _refresh(): executa lógica relacionada a refresh.
     def _refresh(self):
-        """Atualiza cards de histórico."""
+        """Atualiza cards de histórico com efeitos hover."""
         if self.cards_container is None:
             return
         for widget in self.cards_container.winfo_children():
@@ -872,6 +945,26 @@ class HistoricoScreen(ScreenBase):
                                 border_width=1, border_color=get_color_tuple("border"),
                                 corner_radius=8)
             card.pack(fill="x", padx=5, pady=5)
+
+            # Armazenar cores originais para hover
+            original_bg = get_color_tuple("surface")
+            hover_bg = self.theme_manager.get_hover_color("surface")
+            original_border = get_color_tuple("border")
+            hover_border = self.theme_manager.get_color("primary")
+
+            # Bind hover effects
+            # Função on_enter(c=card, ob=original_bg, hb=hover_bg, obr=original_border, hbr=hover_border): executa lógica relacionada a on enter.
+            def on_enter(c=card, ob=original_bg, hb=hover_bg, obr=original_border, hbr=hover_border):
+                from ui_animations import UIAnimations
+                UIAnimations.card_hover_effect(c, True, ob, hb, obr, hbr, duration=150)
+
+            # Função on_leave(c=card, ob=original_bg, hb=hover_bg, obr=original_border, hbr=hover_border): executa lógica relacionada a on leave.
+            def on_leave(c=card, ob=original_bg, hb=hover_bg, obr=original_border, hbr=hover_border):
+                from ui_animations import UIAnimations
+                UIAnimations.card_hover_effect(c, False, hb, ob, hbr, obr, duration=150)
+
+            card.bind("<Enter>", on_enter)
+            card.bind("<Leave>", on_leave)
 
             titulo = ctk.CTkLabel(card, text=f"{item.get('modelo', 'Sem Modelo')}",
                                   font=get_font(12, "bold"),
@@ -906,10 +999,12 @@ class HistoricoScreen(ScreenBase):
                           width=130, height=28, font=get_font(9, "bold")).pack(side='right', padx=4)
             # O histórico já foi adicionado ao card acima; não há item_frame definido aqui.
     
+    # Função interna _on_carregar(): executa lógica relacionada a on carregar.
     def _on_carregar(self):
         """Carrega item selecionado (deprecated - usar reutilizar)."""
         pass  # Agora usa _on_reutilizar
     
+    # Função interna _on_reutilizar(idx): executa lógica relacionada a on reutilizar.
     def _on_reutilizar(self, idx):
         """Reutiliza dados do item selecionado."""
         texto = self.historico[-20 + idx]
@@ -921,12 +1016,14 @@ class HistoricoScreen(ScreenBase):
             except Exception:
                 pass
 
+    # Função interna _copy_to_clipboard(texto): executa lógica relacionada a copy to clipboard.
     def _copy_to_clipboard(self, texto):
         root = self.winfo_toplevel()
         if hasattr(root, "clipboard_clear") and hasattr(root, "clipboard_append"):
             root.clipboard_clear()
             root.clipboard_append(texto)
 
+    # Função interna _call_reutilizar(item): executa lógica relacionada a call reutilizar.
     def _call_reutilizar(self, item):
         root = self.winfo_toplevel()
         if hasattr(root, "_reutilizar_dados"):
@@ -934,20 +1031,24 @@ class HistoricoScreen(ScreenBase):
             if callable(method):
                 method(item)
 
+    # Função interna _on_limpar(): executa lógica relacionada a on limpar.
     def _on_limpar(self):
         """Limpa histórico."""
         self.historico.clear()
         self._refresh()
 
 
+# Classe MensagensScreen: define comportamento e estrutura desta parte do aplicativo.
 class MensagensScreen(ScreenBase):
     """Tela de mensagens."""
     
+    # Função interna __init__(parent, theme_manager, **kwargs): executa lógica relacionada a init.
     def __init__(self, parent, theme_manager, **kwargs):
         super().__init__(parent, theme_manager=theme_manager, **kwargs)
         
         self._build_ui()
     
+    # Função interna _build_ui(): executa lógica relacionada a build ui.
     def _build_ui(self):
         """Constrói interface."""
         self.grid_rowconfigure(1, weight=1)
@@ -965,6 +1066,7 @@ class MensagensScreen(ScreenBase):
                                                    corner_radius=6)
         self.message_frame.grid(row=1, column=0, sticky='nsew', padx=15, pady=15)
     
+    # Função interna _on_theme_change(is_dark): executa lógica relacionada a on theme change.
     def _on_theme_change(self, is_dark):
         """Atualiza cores."""
         self.configure(fg_color=get_color_tuple("background"))
@@ -974,6 +1076,7 @@ class MensagensScreen(ScreenBase):
                 border_color=get_color_tuple("border")
             )
     
+    # Função add_message(title, message, msg_type="info"): executa lógica relacionada a add message.
     def add_message(self, title, message, msg_type="info"):
         """Adiciona mensagem."""
         msg_frame = ctk.CTkFrame(
@@ -996,6 +1099,7 @@ class MensagensScreen(ScreenBase):
                                 wraplength=600, justify="left")
         msg_label.pack(anchor="w", padx=10, pady=(2, 5))
     
+    # Função interna _get_message_color(msg_type): executa lógica relacionada a get message color.
     def _get_message_color(self, msg_type):
         """Retorna cor da mensagem."""
         colors = {
@@ -1006,12 +1110,14 @@ class MensagensScreen(ScreenBase):
         }
         return colors.get(msg_type, colors["info"])
     
+    # Função clear(): executa lógica relacionada a clear.
     def clear(self):
         """Limpa mensagens."""
         for widget in self.message_frame.winfo_children():
             widget.destroy()
 
 
+# Classe ModelManagerFrame: define comportamento e estrutura desta parte do aplicativo.
 class ModelManagerFrame(ScreenBase):
     """Componente de gerenciamento de modelos para UI limpa e modular."""
 
@@ -1155,10 +1261,27 @@ class ModelManagerFrame(ScreenBase):
             height=300
         )
         self.text_editor.grid(row=6, column=0, sticky='nsew', pady=(0, 15))
+        text_editor = self.text_editor
 
-        model_scroll = ctk.CTkScrollbar(container, orientation='vertical', command=self.text_editor.yview)
-        model_scroll.grid(row=6, column=1, sticky='ns', pady=(0, 15), padx=(5, 0))
-        self.text_editor.configure(yscrollcommand=model_scroll.set)
+        # Scrollbar com transições de cor
+        self.model_scroll = ctk.CTkScrollbar(container, orientation='vertical', 
+                                          command=self.text_editor.yview)
+        self.model_scroll.grid(row=6, column=1, sticky='ns', pady=(0, 15), padx=(5, 0))
+        self.text_editor.configure(yscrollcommand=self.model_scroll.set)
+
+        # Bind focus events para transições
+        # Função on_editor_focus_in(e): executa lógica relacionada a on editor focus in.
+        def on_editor_focus_in(e):
+            text_editor.configure(border_color=self.theme_manager.get_focus_border_color())
+            self.model_scroll.configure(button_color=self.theme_manager.get_color("primary"))
+
+        # Função on_editor_focus_out(e): executa lógica relacionada a on editor focus out.
+        def on_editor_focus_out(e):
+            text_editor.configure(border_color=get_color_tuple("border"))
+            self.model_scroll.configure(button_color=get_color_tuple("border"))
+
+        self.text_editor.bind("<FocusIn>", on_editor_focus_in)
+        self.text_editor.bind("<FocusOut>", on_editor_focus_out)
 
         btn_frame = ctk.CTkFrame(container, fg_color="transparent")
         btn_frame.grid(row=7, column=0, sticky='ew', pady=10)
@@ -1251,6 +1374,7 @@ class ModelManagerFrame(ScreenBase):
         code_text = ctk.CTkTextbox(dialog, height=220, font=get_font(13, family="Consolas"))
         code_text.pack(padx=10, pady=(0, 15), fill="both", expand=True)
 
+        # Função salvar(): executa lógica relacionada a salvar.
         def salvar():
             nome = name_entry.get().strip()
             codigo = code_text.get("1.0", tk.END).strip()
@@ -1310,9 +1434,11 @@ class ModelManagerFrame(ScreenBase):
         self.configure(fg_color=self.theme_manager.get_color("background"))
 
 
+# Classe GeradorSEIApp: define comportamento e estrutura desta parte do aplicativo.
 class GeradorSEIApp(ctk.CTk):
     """Aplicação principal com navegação por sidebar elegante."""
     
+    # Função interna __init__(): executa lógica relacionada a init.
     def __init__(self):
         super().__init__()
         self.title("Gerador de Despacho SEI")
@@ -1349,11 +1475,13 @@ class GeradorSEIApp(ctk.CTk):
         self._setup_shortcuts()
         self.theme_manager.register_observer(self._on_theme_change)
     
+    # Função interna _ensure_assets_folder(): executa lógica relacionada a ensure assets folder.
     def _ensure_assets_folder(self):
         """Garante que a pasta assets existe."""
         if not os.path.exists(self.assets_dir):
             os.makedirs(self.assets_dir)
     
+    # Função interna _load_icons(): executa lógica relacionada a load icons.
     def _load_icons(self):
         """Carrega ícones da pasta assets."""
         icons = {}
@@ -1382,6 +1510,7 @@ class GeradorSEIApp(ctk.CTk):
         
         return icons
     
+    # Função interna _show_icon_warning(missing_icons): executa lógica relacionada a show icon warning.
     def _show_icon_warning(self, missing_icons):
         """Mostra aviso discreto sobre ícones faltantes."""
         if "mensagens" in self.screens:
@@ -1391,6 +1520,7 @@ class GeradorSEIApp(ctk.CTk):
                 "warning"
             )
     
+    # Função interna _carregar_config(): executa lógica relacionada a carregar config.
     def _carregar_config(self):
         """Carrega configurações."""
         if os.path.exists(self.config_file):
@@ -1401,6 +1531,7 @@ class GeradorSEIApp(ctk.CTk):
                 pass
         return True
     
+    # Função interna _salvar_config(): executa lógica relacionada a salvar config.
     def _salvar_config(self):
         """Salva configurações."""
         try:
@@ -1409,6 +1540,7 @@ class GeradorSEIApp(ctk.CTk):
         except:
             pass
     
+    # Função interna _carregar_modelos_custom(): executa lógica relacionada a carregar modelos custom.
     def _carregar_modelos_custom(self):
         """Carrega modelos customizados."""
         if os.path.exists(self.modelos_file):
@@ -1419,6 +1551,7 @@ class GeradorSEIApp(ctk.CTk):
             except:
                 pass
     
+    # Função interna _build_ui(): executa lógica relacionada a build ui.
     def _build_ui(self):
         """Constrói interface moderna com sidebar elegante e status bar."""
         # Força o app a ser responsivo ao redimensionar
@@ -1458,6 +1591,7 @@ class GeradorSEIApp(ctk.CTk):
         # Criar telas
         self._create_screens()
         
+    # Função interna _create_header(parent): executa lógica relacionada a create header.
     def _create_header(self, parent):
         """Cria header elegante."""
         header = ctk.CTkFrame(parent, fg_color=get_color_tuple("surface"),
@@ -1484,6 +1618,7 @@ class GeradorSEIApp(ctk.CTk):
                                        corner_radius=8)
         self.theme_btn.pack(side="right", padx=25, pady=12)
     
+    # Função interna _create_status_bar(parent): executa lógica relacionada a create status bar.
     def _create_status_bar(self, parent):
         """Cria status bar no rodapé."""
         status_bar = ctk.CTkFrame(parent, fg_color=get_color_tuple("surface"),
@@ -1504,14 +1639,23 @@ class GeradorSEIApp(ctk.CTk):
                                               text_color=get_color_tuple("text_secondary"))
         self.theme_status_label.pack(side="right", padx=15, pady=5)
     
+    # Função interna _create_sidebar(parent): executa lógica relacionada a create sidebar.
     def _create_sidebar(self, parent):
-        """Cria sidebar elegante com hover distintos."""
+        """Cria sidebar elegante com hover distintos e indicador animado."""
         self.sidebar = ctk.CTkFrame(parent, fg_color=get_color_tuple("surface"),
                                    width=220, corner_radius=0)
         self.sidebar.grid(row=0, column=0, sticky='nsw', padx=0, pady=0)
         self.sidebar.grid_propagate(False)
         parent.grid_rowconfigure(0, weight=1)
         parent.grid_columnconfigure(0, weight=0)
+        
+        # Indicador animado
+        from ui_animations import UIAnimations
+        self.nav_indicator = UIAnimations.create_indicator_line(
+            self.sidebar, height=50, width=4, 
+            color=self.theme_manager.get_color("primary")
+        )
+        self.nav_indicator.place(x=0, y=50)  # Posição inicial
         
         # Título da sidebar
         sidebar_title = ctk.CTkLabel(self.sidebar, text="NAVEGAÇÃO", 
@@ -1527,25 +1671,28 @@ class GeradorSEIApp(ctk.CTk):
             ("Mensagens", "mensagens")
         ]
         
-        for text, screen_name in self.nav_items:
+        self.nav_buttons = {}
+        for idx, (text, screen_name) in enumerate(self.nav_items):
             icon = self.icons.get(screen_name)
             btn = ctk.CTkButton(self.sidebar, text=text, height=50, 
                                font=ctk.CTkFont(size=11, weight="bold"),
                                fg_color="transparent", 
-                               hover_color=get_color_tuple("primary"),
+                               hover_color=self.theme_manager.get_hover_color("primary"),
                                text_color=get_color_tuple("text_primary"),
                                border_width=0, corner_radius=8, image=icon,
-                               command=lambda s=screen_name: self._switch_screen(s))
+                               command=lambda s=screen_name, i=idx: self._switch_screen(s, i))
             btn.pack(fill="x", padx=15, pady=5)
             
             # Hover effect mais distinto
-            def on_enter(e, b=btn):
+            # Função on_enter(e, b=btn, i=idx): executa lógica relacionada a on enter.
+            def on_enter(e, b=btn, i=idx):
                 if b != self.nav_buttons.get(self.current_screen):
-                    b.configure(fg_color=get_color_tuple("surface"), 
-                              text_color=get_color_tuple("primary"),
-                              border_width=1, border_color=get_color_tuple("primary"))
+                    b.configure(fg_color=self.theme_manager.get_hover_color("surface"), 
+                              text_color=self.theme_manager.get_color("primary"),
+                              border_width=1, border_color=self.theme_manager.get_color("primary"))
             
-            def on_leave(e, b=btn):
+            # Função on_leave(e, b=btn, i=idx): executa lógica relacionada a on leave.
+            def on_leave(e, b=btn, i=idx):
                 if b != self.nav_buttons.get(self.current_screen):
                     b.configure(fg_color="transparent", 
                               text_color=get_color_tuple("text_primary"),
@@ -1556,6 +1703,7 @@ class GeradorSEIApp(ctk.CTk):
             
             self.nav_buttons[screen_name] = btn
     
+    # Função interna _create_screens(): executa lógica relacionada a create screens.
     def _create_screens(self):
         """Cria todas as telas."""
         self.screens["gerar"] = GenerarScreen(
@@ -1588,6 +1736,7 @@ class GeradorSEIApp(ctk.CTk):
             fg_color=get_color_tuple("background")
         )
     
+    # Função interna _setup_shortcuts(): executa lógica relacionada a setup shortcuts.
     def _setup_shortcuts(self):
         """Configura atalhos."""
         self.bind("<Control-s>", lambda e: self.screens["gerar"]._on_salvar())
@@ -1597,27 +1746,49 @@ class GeradorSEIApp(ctk.CTk):
         self.bind("<Control-q>", lambda e: self.quit())
         self.bind("<F11>", lambda e: self._toggle_theme())
     
-    def _switch_screen(self, screen_name):
-        """Muda tela ativa com efeitos visuais."""
-        if self.current_screen:
-            self.screens[self.current_screen].hide()
+    # Função interna _switch_screen(screen_name, button_index=None): executa lógica relacionada a switch screen.
+    def _switch_screen(self, screen_name, button_index=None):
+        """Muda tela ativa com efeitos visuais e indicador animado."""
+        if self.current_screen == screen_name:
+            return
+            
+        from ui_animations import UIAnimations
         
-        self.current_screen = screen_name
-        self.screens[screen_name].show()
+        # Fade out tela atual
+        if self.current_screen:
+            UIAnimations.fade_out(self.screens[self.current_screen], duration=200, 
+                                on_complete=lambda: self._show_new_screen(screen_name))
+        else:
+            self._show_new_screen(screen_name)
+        
+        # Animação do indicador
+        if button_index is not None and hasattr(self, 'nav_indicator'):
+            target_y = 50 + (button_index * 60)  # Ajustar baseado no layout
+            UIAnimations.animate_indicator_move(self.nav_indicator, target_y, duration=300)
         
         # Atualizar botões de navegação
         for name, btn in self.nav_buttons.items():
             if name == screen_name:
-                btn.configure(fg_color=get_color_tuple("primary"),
+                btn.configure(fg_color=self.theme_manager.get_color("primary"),
                              text_color="white")
             else:
                 btn.configure(fg_color="transparent",
                              text_color=get_color_tuple("text_primary"))
         
+        self.current_screen = screen_name
+        
         # Refresh histórico se necessário
         if screen_name == "historico":
             self.screens["historico"]._refresh()
     
+    # Função interna _show_new_screen(screen_name): executa lógica relacionada a show new screen.
+    def _show_new_screen(self, screen_name):
+        """Mostra nova tela com fade-in."""
+        from ui_animations import UIAnimations
+        self.screens[screen_name].show()
+        UIAnimations.fade_in(self.screens[screen_name], duration=300)
+    
+    # Função interna _show_message(title, message, msg_type="info"): executa lógica relacionada a show message.
     def _show_message(self, title, message, msg_type="info"):
         """Mostra mensagem com CTkMessagebox e adiciona à tela de mensagens."""
         # Mapeia tipos para ícones do CTkMessagebox
@@ -1635,6 +1806,7 @@ class GeradorSEIApp(ctk.CTk):
         # Também adiciona à tela de mensagens para histórico
         self.screens["mensagens"].add_message(title, message, msg_type)
     
+    # Função interna _reutilizar_dados(item): executa lógica relacionada a reutilizar dados.
     def _reutilizar_dados(self, item):
         """Tenta extrair dados do texto gerado e preencher campos."""
         gerar_screen = self.screens["gerar"]
@@ -1688,6 +1860,7 @@ class GeradorSEIApp(ctk.CTk):
         self._switch_screen("gerar")
         self._show_message("Sucesso", "Dados reutilizados! Verifique e ajuste se necessário.", "success")
     
+    # Função interna _on_modelos_update(): executa lógica relacionada a on modelos update.
     def _on_modelos_update(self):
         """Callback quando modelos são atualizados."""
         self.screens["gerar"].model_select.configure(values=self.engine.get_modelos_list())
@@ -1702,6 +1875,7 @@ class GeradorSEIApp(ctk.CTk):
             text_color=get_color_tuple("success")
         )
     
+    # Função interna _on_theme_change(is_dark): executa lógica relacionada a on theme change.
     def _on_theme_change(self, is_dark):
         """Callback quando tema muda."""
         ctk.set_appearance_mode("dark" if is_dark else "light")
@@ -1709,10 +1883,12 @@ class GeradorSEIApp(ctk.CTk):
         self.theme_status_label.configure(text=f"Tema: {'Escuro' if is_dark else 'Claro'}")
         self._salvar_config()
     
+    # Função interna _toggle_theme(): executa lógica relacionada a toggle theme.
     def _toggle_theme(self):
         """Alterna tema."""
         self.theme_manager.toggle_theme()
 
+    # Função interna _toggle_sidebar(): executa lógica relacionada a toggle sidebar.
     def _toggle_sidebar(self):
         """Alterna entre sidebar expandida e recolhida"""
         if getattr(self, 'sidebar_collapsed', False):
@@ -1730,6 +1906,7 @@ class GeradorSEIApp(ctk.CTk):
                     btn.configure(text="", width=56)
             self.sidebar_collapsed = True
 
+    # Função copiar_para_clipboard(texto: Optional[str] = None): executa lógica relacionada a copiar para clipboard.
     def copiar_para_clipboard(self, texto: Optional[str] = None):
         """Copia despacho para clipboard."""
         if texto is None:

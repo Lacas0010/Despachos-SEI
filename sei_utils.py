@@ -1,3 +1,6 @@
+# Arquivo comentado em português para explicar cada parte do código.
+# As anotações foram adicionadas antes de classes e funções para facilitar o entendimento.
+
 import customtkinter as ctk
 from theme_config import get_color_tuple, get_font, configure_appearance
 
@@ -10,6 +13,7 @@ def get_color(key: str, mode: str = "light") -> str:
     return color_tuple[1] if mode.lower() == "dark" else color_tuple[0]
 
 
+# Função configure_theme(): executa lógica relacionada a configure theme.
 def configure_theme():
     """Configura o tema de aparência no CustomTkinter."""
     # Retorna o modo atual (light/dark)

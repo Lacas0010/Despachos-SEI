@@ -1,3 +1,6 @@
+# Arquivo comentado em português para explicar cada parte do código.
+# As anotações foram adicionadas antes de classes e funções para facilitar o entendimento.
+
 """
 Theme configuration for Gerador SEI
 Centralized color schemes and appearance settings
@@ -17,7 +20,10 @@ COLOR_SCHEME: Dict[str, Tuple[str, str]] = {
     "error": ("#EF4444", "#F87171"),
     "text_primary": ("#1F2937", "#F1F5F9"),
     "text_secondary": ("#6B7280", "#CBD5E1"),
-    "border": ("#E5E7EB", "#374151")
+    "border": ("#E5E7EB", "#374151"),
+    "hover_primary": ("#1D4ED8", "#0056CC"),
+    "hover_surface": ("#E5E7EB", "#2D2D2D"),
+    "focus_border": ("#3B82F6", "#0EA5E9")
 }
 
 def get_color_tuple(key: str) -> Tuple[str, str]:
@@ -35,9 +41,24 @@ def get_font(size: int = 12, weight: str = "normal", family: Optional[str] = Non
         return ctk.CTkFont(size=size, weight=weight, family=family)
     return ctk.CTkFont(size=size, weight=weight)
 
+def get_hover_color(base_color_key: str, theme_manager) -> str:
+    """Get appropriate hover color based on theme."""
+    hover_map = {
+        "primary": "hover_primary",
+        "surface": "hover_surface"
+    }
+    hover_key = hover_map.get(base_color_key, base_color_key)
+    return theme_manager.get_color(hover_key)
+
+def get_focus_border_color(theme_manager) -> str:
+    """Get focus border color."""
+    return theme_manager.get_color("focus_border")
+
+# Classe ThemeObserver: define comportamento e estrutura desta parte do aplicativo.
 class ThemeObserver:
     """Observer pattern for theme changes."""
 
+    # Função interna __init__(): executa lógica relacionada a init.
     def __init__(self):
         self._observers: list = []
 
@@ -63,9 +84,11 @@ class ThemeObserver:
                 pass
 
 
+# Classe ThemeManager: define comportamento e estrutura desta parte do aplicativo.
 class ThemeManager:
     """Theme manager wrapper for compatibility with legacy code."""
 
+    # Função interna __init__(is_dark: bool = True): executa lógica relacionada a init.
     def __init__(self, is_dark: bool = True):
         self.is_dark = is_dark
         self._observer = ThemeObserver()
@@ -94,3 +117,11 @@ class ThemeManager:
     def get_color(self, key: str) -> str:
         colors = COLOR_SCHEME.get(key, ("#000000", "#FFFFFF"))
         return colors[1] if self.is_dark else colors[0]
+
+    def get_hover_color(self, base_key: str) -> str:
+        """Get hover color for given base color key."""
+        return get_hover_color(base_key, self)
+
+    def get_focus_border_color(self) -> str:
+        """Get focus border color."""
+        return get_focus_border_color(self)

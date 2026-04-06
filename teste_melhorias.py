@@ -1,3 +1,6 @@
+# Arquivo comentado em português para explicar cada parte do código.
+# As anotações foram adicionadas antes de classes e funções para facilitar o entendimento.
+
 """
 Teste das melhorias implementadas no Gerador SEI
 """
@@ -6,6 +9,7 @@ import sys
 import os
 sys.path.append(os.path.dirname(__file__))
 
+# Função test_imports(): executa lógica relacionada a test imports.
 def test_imports():
     """Testa se todos os módulos podem ser importados."""
     try:
@@ -18,6 +22,7 @@ def test_imports():
         print(f"❌ Erro nos imports: {e}")
         return False
 
+# Função test_engine(): executa lógica relacionada a test engine.
 def test_engine():
     """Testa funcionalidades básicas do engine."""
     try:
@@ -44,6 +49,7 @@ def test_engine():
         print(f"❌ Erro no engine: {e}")
         return False
 
+# Função test_theme(): executa lógica relacionada a test theme.
 def test_theme():
     """Testa funcionalidades do theme manager."""
     try:
