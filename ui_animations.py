@@ -1,11 +1,3 @@
-# Arquivo comentado em português para explicar cada parte do código.
-# As anotações foram adicionadas antes de classes e funções para facilitar o entendimento.
-
-"""
-UI Animations module for Gerador SEI
-Provides smooth transitions and micro-interactions for enhanced UX
-"""
-
 import customtkinter as ctk
 from typing import Callable, Any, Optional, cast
 import time

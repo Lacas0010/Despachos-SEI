@@ -1,6 +1,3 @@
-# Arquivo comentado em português para explicar cada parte do código.
-# As anotações foram adicionadas antes de classes e funções para facilitar o entendimento.
-
 import customtkinter as ctk
 from theme_config import get_color_tuple, get_font, configure_appearance
 

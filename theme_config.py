@@ -1,11 +1,3 @@
-# Arquivo comentado em português para explicar cada parte do código.
-# As anotações foram adicionadas antes de classes e funções para facilitar o entendimento.
-
-"""
-Theme configuration for Gerador SEI
-Centralized color schemes and appearance settings
-"""
-
 from typing import Dict, Tuple, Any, Optional
 import customtkinter as ctk
 

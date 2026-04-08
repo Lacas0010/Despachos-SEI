@@ -1,7 +1,4 @@
-﻿# Arquivo comentado em português para explicar cada parte do código.
-# As anotações foram adicionadas antes de classes e funções para facilitar o entendimento.
-
-"""
+﻿"""
 Gerador SEI - Main Application
 Modern interface for SEI document generation
 """

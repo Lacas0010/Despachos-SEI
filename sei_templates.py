@@ -1,6 +1,3 @@
-# Arquivo comentado em português para explicar cada parte do código.
-# As anotações foram adicionadas antes de classes e funções para facilitar o entendimento.
-
 PREFIXO_DOCUMENTO = (
     "À Subsecretaria de Bem-estar Animal (Suban),\n\n" +
     "SUJEITO A PRAZO".center(90) + "\n\n"

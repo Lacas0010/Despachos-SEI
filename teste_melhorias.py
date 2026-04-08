@@ -1,10 +1,3 @@
-# Arquivo comentado em português para explicar cada parte do código.
-# As anotações foram adicionadas antes de classes e funções para facilitar o entendimento.
-
-"""
-Teste das melhorias implementadas no Gerador SEI
-"""
-
 import sys
 import os
 sys.path.append(os.path.dirname(__file__))

@@ -1,6 +1,3 @@
-# Arquivo comentado em português para explicar cada parte do código.
-# As anotações foram adicionadas antes de classes e funções para facilitar o entendimento.
-
 """
 Engine module for Gerador SEI
 Contains business logic for text generation, validation, and data processing
