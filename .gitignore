@@ -1,117 +1,28 @@
-# ==============================
-# Python & Ambiente Virtual
-# ==============================
+# Ambientes Virtuais e Dependências Python
 __pycache__/
 *.py[cod]
 *$py.class
-*.pyc
-*.pyo
-*.pyd
-*.egg-info/
-.pytest_cache/
-.coverage
-htmlcov/
-Pipfile.lock
-pip-wheel-metadata/
-
-# Ambientes virtuais
-env/
 .venv/
 venv/
-ENV/
-env.bak/
-venv.bak/
+env/
 
-# ==============================
-# IDEs & Editores
-# ==============================
+# Configurações de IDEs
 .vscode/
 .idea/
-*.sublime-project
-*.sublime-workspace
 *.swp
-*.swo
-*~
-.DS_Store
 
-# ==============================
-# Sistema Operacional
-# ==============================
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
-*.stackdump
-desktop.ini
+# Logs da Aplicação
+*.log
+app_debug.log
 
-# ==============================
-# Arquivos gerados pela aplicação
-# ==============================
-dados_ultimo.json
+# Dados da IA e Configurações Locais
+vetores_ia.json
 config.json
+dados_ultimo.json
 modelos_custom.json
-*.pdf
-*.xlsx
-*.xls
 
-# ==============================
-# Builds & Distribuição
-# ==============================
+# Artefatos de Build / Executáveis (PyInstaller)
 build/
 dist/
 *.spec
-*.exe
-*.msi
-*.dmg
-*.pkg
-*.deb
-*.rpm
-*.appimage
-*.whl
-
-# ==============================
-# Logs & Debug
-# ==============================
-logs/
-*.log
-*.log.*
-debug.log
-error.log
-errors.log
-
-# ==============================
-# Ambiente de Desenvolvimento
-# ==============================
-.env
-.env.local
-.env.*.local
-.flake8
-.pylintrc
-pyproject.toml.local
-
-# ==============================
-# Arquivos Temporários
-# ==============================
-tmp/
-temp/
-.cache/
-*.tmp
-*.temp
-*.bak
-*.swp
-
-# ==============================
-# Git
-# ==============================
-.git/
-.github/
-COMMIT_EDITMSG
-
-# ==============================
-# Documentação Gerada
-# ==============================
-docs/_build/
-site/
+.chroma/

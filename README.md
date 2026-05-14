@@ -8,6 +8,7 @@ Uma aplicação desktop moderna e inteligente para geração, análise e refinam
 - **Análise de Processos**: Extração automática de contexto a partir de pastas inteiras contendo PDFs (com suporte a OCR via bibliotecas externas), arquivos do Word (DOCX), HTML e TXT.
 - **Assistente Interativo (Chat)**: Converse com a IA para refinar, alterar o tom ou corrigir documentos gerados com comandos em linguagem natural (Ex: "Troque a data de hoje para amanhã").
 - **Privacidade e Segurança**: O processamento (Inferência e Embeddings) é feito offline na máquina do usuário, protegendo dados sensíveis do governo.
+- **Redação Padronizada GDF**: A IA é configurada com 12 regras estritas de formatação e redação (ex: numeração de parágrafos, formatação de datas, padronização de siglas e proibição de cópias literais).
 
 ### 📚 Aprendizado Contínuo (RAG Local)
 - **Memória de Processos**: O aplicativo lê pastas com processos anteriores e aprende o padrão e formato dos despachos.
@@ -81,8 +82,8 @@ gerador_sei/
 ├── engine.py           # Lógica de negócio e validações
 ├── theme_config.py     # Configuração de temas e cores
 ├── sei_templates.py    # Modelos de despacho pré-definidos
-├── sei_utils.py        # Utilitários diversos
 ├── requirements.txt    # Dependências Python
+├── dlls/               # Dependências nativas e bibliotecas dinâmicas do Windows (opcional)
 └── README.md          # Esta documentação
 ```
 
