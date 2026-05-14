@@ -1,67 +1,46 @@
-# 🎯 Gerador SEI - v2.0
+# 🎯 Gerador SEI - IA Edition (Local RAG)
 
-Uma aplicação desktop moderna e intuitiva para geração de despachos SEI (Sistema Eletrônico de Informações), desenvolvida em Python com interface gráfica elegante usando CustomTkinter.
-
-![Interface](assets/screenshot.png)
+Uma aplicação desktop moderna e inteligente para geração, análise e refinamento de despachos SEI (Sistema Eletrônico de Informações). Esta versão é impulsionada por **Inteligência Artificial Local** (LLaMA 3.2 via Ollama), garantindo automação inteligente com **100% de privacidade** e segurança dos dados, sem envio de informações para a nuvem.
 
 ## ✨ Funcionalidades
 
-### 📝 Geração de Despachos
-- **4 Modelos Pré-definidos**: HVEP, Castração, Condições HVEP e Cronograma
-- **Modelos Customizáveis**: Adicione, edite, remova ou **duplique** modelos personalizados
-- **Campos Validados**: Validação em tempo real com feedback visual (borda colorida)
-- **Validação de SEI**: Formato validado automaticamente (4-12 dígitos)
-- **Validação de Protocolo**: Formato OUV-XXXX/YYYY com checagem automática
-- **Template Engine**: Sistema de placeholders inteligentes ({NUM_OFICIO}, {SEI_OFICIO}, etc.)
+### 🧠 Inteligência Artificial (Ollama + LLaMA)
+- **Análise de Processos**: Extração automática de contexto a partir de pastas inteiras contendo PDFs (com suporte a OCR via bibliotecas externas), arquivos do Word (DOCX), HTML e TXT.
+- **Assistente Interativo (Chat)**: Converse com a IA para refinar, alterar o tom ou corrigir documentos gerados com comandos em linguagem natural (Ex: "Troque a data de hoje para amanhã").
+- **Privacidade e Segurança**: O processamento (Inferência e Embeddings) é feito offline na máquina do usuário, protegendo dados sensíveis do governo.
 
-### 🎨 Interface Moderna v2.0
-- **Design Responsivo**: Layout que se adapta perfeitamente ao tamanho da janela
-- **Tema Dark/Light**: Alternância com `F11` com salvamento de preferência
-- **Sidebar Retrátil**: Menu de navegação elegante e compacto
-- **Tooltips Informativos**: Dicas contextuais em todos os campos
-- **Cards Modernos**: Histórico exibido em cards com ações diretas
-- **Blocos Agrupados**: Dados visualmente organizados por seção (Documento, Manifestação, etc.)
-- **Fonte Monoespaciada**: Apresentação de despachos em Consolas/Courier para melhor legibilidade
+### 📚 Aprendizado Contínuo (RAG Local)
+- **Memória de Processos**: O aplicativo lê pastas com processos anteriores e aprende o padrão e formato dos despachos.
+- **TinyVectorDB**: Banco de dados vetorial leve, construído de forma nativa e otimizado para não causar falhas (segfaults) em ambientes Windows.
 
-### 📊 Gerenciamento Avançado
-- **Histórico em Cards**: Últimos despachos com preview e ações de reutilização
-- **Busca de Modelos**: Filtro instantâneo na lista de modelos disponíveis
-- **Atalhos de Prazo**: Botões rápidos `+5d`, `+15d`, `+30d` para cálculo automático
-- **Cálculo de Data**: Função `calcular_data_prazo()` centralizada no engine
-- **Reutilizar Dados**: Carregue dados de despachos anteriores com um clique
-- **Copiar + Limpar**: Botão dedicado que copia e reseta os campos
-- **Persistência de Dados**: Salvamento automático em JSON
-- **Exportação PDF**: Geração de documentos formatados
+### 🎨 Interface Moderna e Integrada
+- **Single-Page Application**: Interface unificada dividida inteligentemente entre Chat da IA, Resultado e Histórico.
+- **Tema Dark/Light**: Alternância suave de tema com persistência de preferências do usuário.
+- **Histórico Visual**: Navegue em cards com as últimas gerações ou refinamentos e reutilize textos passados com um clique.
+- **Copiar para Clipboard**: Ações de um clique para "Copiar e Limpar" ou exportar diretamente para PDF formatado.
 - **Copiar para Clipboard**: Cópia automática com feedback visual
-
-### 🛠️ Recursos Técnicos
-- **Validação Robusta**: Checagem em tempo real com feedback imediato
-- **Calendário Integrado**: Seletor visual de datas com navegação
-- **Atalhos de Teclado**: Navegação rápida (`Ctrl+G`, `Ctrl+S`, `F11`, etc.)
-- **Sistema de Mensagens**: Feedback visual com título, mensagem e ícone
-- **Observer Pattern**: Sistema de temas com suporte a múltiplos observadores
-- **Monitoramento Live**: Validação de campos enquanto você digita
 
 ## 🚀 Instalação
 
 ### Pré-requisitos
 - Python 3.8 ou superior
-- pip (gerenciador de pacotes Python)
+- Ollama instalado em sua máquina.
 
-### Instalação Automática
+### Passo a Passo de Instalação
 ```bash
 # Clone o repositório
 git clone https://github.com/seu-usuario/gerador-sei.git
 cd gerador-sei
 
-# Instale as dependências
-pip install -r requirements.txt
-```
+# Crie e ative um ambiente virtual (Opcional, mas recomendado)
+python -m venv venv
+source venv/bin/activate  # No Windows use: venv\Scripts\activate
 
-### Instalação Manual
-```bash
-# Instale as bibliotecas necessárias
-pip install customtkinter tkcalendar reportlab pandas openpyxl matplotlib
+# Instale as dependências do Python
+pip install -r requirements.txt
+
+# Baixe o modelo LLM do Ollama para o seu computador
+ollama run llama3.2
 ```
 
 ## 📖 Como Usar

@@ -1,0 +1,13 @@
+# Dependências Principais da Interface e Geração (PDFs)
+customtkinter
+Pillow
+reportlab
+CTkMessagebox
+
+# Dependências para Inteligência Artificial (Local RAG com Ollama e Extração de PDF)
+ollama
+pypdf
+chromadb
+beautifulsoup4
+python-docx
+protobuf>=5.26.1,<6.0.0
