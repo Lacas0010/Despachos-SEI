@@ -415,6 +415,21 @@ class SEIEngine:
             # Limitar o texto para não estourar o contexto da IA (Foco no final do processo)
             extracted_text = extracted_text[-8000:] if len(extracted_text) > 8000 else extracted_text
             
+            # 1.5 Classificação do Processo (Routing)
+            prompt_class = f"Analise o texto a seguir e identifique o tipo de processo. Responda APENAS com UMA destas palavras: OUVIDORIA, DILACAO ou GENERICO.\n\nTexto: {extracted_text[:2000]}"
+            try:
+                res_class = ollama.chat(model='llama3.2', messages=[{'role': 'user', 'content': prompt_class}], options={'temperature': 0.1})
+                tipo_raw = res_class.get('message', {}).get('content', '').upper()
+                if 'OUVIDORIA' in tipo_raw: tipo_detectado = "OUVIDORIA"
+                elif 'DILACAO' in tipo_raw or 'DILAÇÃO' in tipo_raw: tipo_detectado = "DILACAO"
+                else: tipo_detectado = "GENERICO"
+            except Exception as e:
+                logger.error(f"Erro na classificação: {e}")
+                tipo_detectado = "GENERICO"
+                
+            if stream_callback:
+                stream_callback(f"[Classificação IA: {tipo_detectado}]\nGerando minuta...\n\n")
+
             # 2. Busca de Exemplos Passados (RAG com ChromaDB)
             contexto_historico = ""
             try:
@@ -428,23 +443,29 @@ class SEIEngine:
             
             # 3. Prompt para o Ollama (IA Local)
             regras_redacao = self._get_regras_redacao()
-            system_prompt = f"""Você é um ASSESSOR DE GABINETE da SEPAN-DF. Sua função é redigir a MINUTA COMPLETA de um documento oficial (Despacho ou Ofício) que será assinada pela chefia.
+            
+            MOLDES_RIGIDOS = {
+                "OUVIDORIA": "Governo do Distrito Federal\nSepan\nAssessoria Especial\n\nBrasília, [DATA].\n\nAssunto: Demanda de Ouvidoria. [TEMA].\n\n1. Trata-se de [HISTÓRICO].\n\nAo Senhor Ouvidor...\nMINUTA\n\n1. Senhor Ouvidor, esclarecemos que [RESPOSTA].",
+                "DILACAO": "Governo do Distrito Federal\nSepan\n[UNIDADE]\n\nBrasília, [DATA].\n\nAssunto: Dilação de Prazo.\n\n1. Trata-se do processo nº [PROT], solicitamos dilação de [DIAS] dias devido a [MOTIVO].",
+                "GENERICO": "Governo do Distrito Federal\nSecretaria Extraordinária de Proteção Animal do Distrito Federal\nGabinete\n\nBrasília, [DATA].\n\nAssunto: [Tema da demanda].\n\n1. Trata-se de [Explicar a demanda do processo].\n\n2. Sobre o tema, esclarecemos que [Descreva a análise técnica e considerações pertinentes em um parágrafo fluido].\n\n3. Encaminho os autos para [Destino da resposta], dando-se por concluída a presente instrução."
+            }
+            molde_escolhido = MOLDES_RIGIDOS.get(tipo_detectado, MOLDES_RIGIDOS["GENERICO"])
+            
+            system_prompt = f"""Você é um ASSESSOR DE GABINETE da SEPAN-DF. Sua função é analisar os fatos do processo e escrever uma MINUTA OFICIAL ÚNICA E COESA.
 
-=== EXEMPLOS DE ESTILO (REFERÊNCIA DE FORMATAÇÃO) ===
-{contexto_historico}
-=====================================================
+REGRA CRÍTICA: NÃO copie e cole parágrafos dos documentos originais. Sintetize as informações em um texto fluido. Não crie listas repetitivas.
 
-SUA TAREFA (CRÍTICA E OBRIGATÓRIA):
-Leia o "Texto do processo" enviado pelo usuário e REDIJA UM NOVO DOCUMENTO DO ZERO.
-- REGRA DE OURO: É ESTRITAMENTE PROIBIDO transcrever ou copiar os textos do processo integralmente. 
-- Use os textos fornecidos APENAS COMO BASE DE DADOS. Extraia os fatos, nomes, datas, números de protocolo e pedidos, e reescreva tudo com suas próprias palavras, usando o jargão administrativo formal.
-- É permitido citar pequenos trechos ou dados específicos exatamente como estão no original, mas a construção dos parágrafos e a argumentação devem ser de sua autoria.
-- Estrutura obrigatória: Cabeçalho do GDF, Introdução ("Trata-se de..."), Fundamentação técnica/justificativa (baseada nos fatos lidos), e Conclusão ("Encaminho os autos...").
+Você deve OBRIGATORIAMENTE seguir este molde:
 
-REGRAS DE REDAÇÃO DO GABINETE:
+MOLDE OBRIGATÓRIO DE REDAÇÃO:
+{molde_escolhido}
+
+Substitua apenas o que está entre colchetes, mantendo a numeração de parágrafos e a estrutura oficial.
+
+REGRAS DE FORMATAÇÃO:
 {regras_redacao}
 
-ATENÇÃO: Retorne APENAS o texto do documento em formato de texto puro. NÃO UTILIZE JSON. Não adicione saudações como "Aqui está o documento". Comece diretamente com o texto da minuta."""
+ATENÇÃO: Retorne APENAS o texto preenchido do molde acima. Não invente novos tópicos e não use JSON."""
 
             try:
                 resposta = ollama.chat(model='llama3.2', messages=[

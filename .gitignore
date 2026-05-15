@@ -30,3 +30,4 @@ dist/
 .chroma/
 chroma_db/
 dlls/
+app_debug.log
