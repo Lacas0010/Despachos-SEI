@@ -19,6 +19,7 @@ from sei_templates import RESUMO_CRONOGRAMA
 from theme_config import (
     get_color_tuple, configure_appearance, get_font, ThemeObserver, ThemeManager
 )
+from ui_animations import UIAnimations
 from engine import SEIEngine
 
 logging.basicConfig(
@@ -140,12 +141,16 @@ class GeradorSEIApp(ctk.CTk):
         
         self.text_saida = ctk.CTkTextbox(frame, font=ctk.CTkFont(size=14, family="Consolas"), wrap="word")
         self.text_saida.grid(row=1, column=0, sticky="nsew", padx=15, pady=(0, 15))
-        self.text_saida.insert("1.0", "O despacho gerado aparecerá aqui...")
+        self.text_saida.insert("1.0", "O documento gerado aparecerá aqui...")
         
         footer = ctk.CTkFrame(frame, fg_color="transparent")
         footer.grid(row=2, column=0, sticky="ew", padx=15, pady=(0, 15))
         self.status_label = ctk.CTkLabel(footer, text="Pronto.", text_color=get_color_tuple("success"))
         self.status_label.pack(side="left")
+        
+        self.progress_bar = ctk.CTkProgressBar(footer, mode="indeterminate", width=200)
+        self.progress_bar.set(0)
+        
         ctk.CTkButton(footer, text="📋 Copiar e Limpar", command=self._on_copiar_limpar, height=35).pack(side="right")
         ctk.CTkButton(footer, text="📄 PDF", command=self._on_pdf, height=35, fg_color="transparent", border_width=1).pack(side="right", padx=10)
 
@@ -163,11 +168,30 @@ class GeradorSEIApp(ctk.CTk):
         self.historico_scroll = ctk.CTkScrollableFrame(frame, fg_color="transparent")
         self.historico_scroll.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 10))
 
+    def _show_progress(self, mode="indeterminate"):
+        self.progress_bar.configure(mode=mode)
+        self.progress_bar.pack(side="left", padx=15)
+        if mode == "indeterminate":
+            self.progress_bar.start()
+
+    def _hide_progress(self):
+        self.progress_bar.stop()
+        self.progress_bar.pack_forget()
+
     def _add_to_chat(self, role, text):
         self.chat_history.configure(state="normal")
         self.chat_history.insert(tk.END, f"{role}: {text}\n\n")
         self.chat_history.configure(state="disabled")
         self.chat_history.see(tk.END)
+
+    def _on_stream_update(self, full_text):
+        def update():
+            output_text = full_text.strip()
+            if output_text:
+                self.text_saida.delete("1.0", tk.END)
+                self.text_saida.insert("1.0", output_text)
+                self.text_saida.see(tk.END)
+        self.schedule_task(update)
 
     def _on_enviar_chat(self):
         msg = self.chat_input.get().strip()
@@ -182,13 +206,15 @@ class GeradorSEIApp(ctk.CTk):
             return
             
         self.status_label.configure(text="IA pensando...", text_color=get_color_tuple("warning"))
+        self._show_progress()
         self.ai_executor.submit(self._process_chat, msg, texto_atual)
 
     def _process_chat(self, msg, texto_atual):
-        res = self.engine.refinar_texto_com_ia(texto_atual, msg)
+        res = self.engine.refinar_texto_com_ia(texto_atual, msg, stream_callback=self._on_stream_update)
         self.schedule_task(lambda: self._apply_chat_result(res))
         
     def _apply_chat_result(self, res):
+        self._hide_progress()
         if res.get("sucesso"):
             novo_texto = res.get("texto_gerado", "")
             self.text_saida.delete("1.0", tk.END)
@@ -235,22 +261,25 @@ class GeradorSEIApp(ctk.CTk):
         path = filedialog.askdirectory(title="Selecione a pasta do processo")
         if not path: return
         self.status_label.configure(text="Analisando IA...", text_color=get_color_tuple("warning"))
+        self._show_progress()
         self.ai_executor.submit(self._process_ia, path)
 
     def _process_ia(self, path):
-        res = self.engine.processar_pasta_com_ia(path)
+        res = self.engine.processar_pasta_com_ia(path, stream_callback=self._on_stream_update)
         self.schedule_task(lambda: self._apply_ia_result(res))
 
     def _apply_ia_result(self, res):
+        self._hide_progress()
         if res.get("sucesso"):
+            tipo_doc = res.get("tipo_documento", "Documento")
             if "texto_gerado" in res:
                 self.text_saida.delete("1.0", tk.END)
                 self.text_saida.insert("1.0", res["texto_gerado"])
-                self._add_to_chat("Sistema", "Documento gerado com sucesso a partir do arquivo.")
+                self._add_to_chat("Sistema", f"[{tipo_doc}] gerado com sucesso a partir da análise do processo.")
             self.status_label.configure(text="Análise concluída!", text_color=get_color_tuple("success"))
             
             self.historico.append({
-                "resumo": res.get("resumo", "Arquivo analisado pela IA"), 
+                "resumo": f"[{tipo_doc}] {res.get('resumo', 'Arquivo analisado pela IA')}", 
                 "texto": res.get("texto_gerado", ""), 
                 "data": datetime.datetime.now().strftime("%d/%m %H:%M")
             })
@@ -265,14 +294,18 @@ class GeradorSEIApp(ctk.CTk):
         path = filedialog.askdirectory(title="Selecione a pasta principal com os processos")
         if not path: return
         self.status_label.configure(text="Alimentando IA...", text_color=get_color_tuple("warning"))
+        self._show_progress("determinate")
+        self.progress_bar.set(0)
         self.ai_executor.submit(self._process_alimentar_ia, path)
 
     def _process_alimentar_ia(self, path):
         def cb(cur, tot, f):
             self.schedule_task(lambda: self.status_label.configure(text=f"Lendo {cur}/{tot}: {f}"))
+            self.schedule_task(lambda: self.progress_bar.set(cur / tot if tot > 0 else 0))
         suc, err = self.engine.alimentar_banco_ia_por_pastas(path, cb)
         self.schedule_task(lambda: self._show_message("IA Alimentada", f"Processos aprendidos: {suc}\nErros: {err}", "success" if suc > 0 else "error"))
         self.schedule_task(lambda: self.status_label.configure(text="IA Atualizada!", text_color=get_color_tuple("success")))
+        self.schedule_task(lambda: self._hide_progress())
 
     def _on_copiar_limpar(self):
         texto = self.text_saida.get("1.0", tk.END).strip()
@@ -281,6 +314,9 @@ class GeradorSEIApp(ctk.CTk):
             self.clipboard_append(texto)
         self.text_saida.delete("1.0", tk.END)
         self.status_label.configure(text="Copiado e limpo!", text_color=get_color_tuple("success"))
+        
+        self.thinking_box.delete("1.0", tk.END)
+        self.thinking_box.insert("1.0", "Raciocínio da IA (Deep Thinking) aparecerá aqui...")
         
         self.chat_history.configure(state="normal")
         self.chat_history.delete("1.0", tk.END)
@@ -302,7 +338,8 @@ class GeradorSEIApp(ctk.CTk):
 
     def _show_message(self, title, msg, type="info"):
         from CTkMessagebox import CTkMessagebox
-        CTkMessagebox(title=title, message=msg, icon="cancel" if type=="error" else type)
+        icon_name = "cancel" if type == "error" else ("check" if type == "success" else type)
+        CTkMessagebox(title=title, message=msg, icon=icon_name)
 
     def _process_queue(self):
         import queue

@@ -11,6 +11,7 @@ import zipfile
 import logging
 import threading
 import math
+import numpy as np
 from typing import Dict, List, Optional, Tuple, Any
 
 # Desativa telemetria do ChromaDB globalmente para evitar crash da thread PostHog no Windows
@@ -75,13 +76,13 @@ class TinyVectorDB:
         with self.lock:
             if not self.data:
                 return []
+            query_vec = np.array(query_embedding)
+            norm_query = np.linalg.norm(query_vec)
             results = []
             for doc_id, doc in self.data.items():
-                emb = doc["embedding"]
-                dot_product = sum(a * b for a, b in zip(query_embedding, emb))
-                norm_a = math.sqrt(sum(a * a for a in query_embedding))
-                norm_b = math.sqrt(sum(b * b for b in emb))
-                sim = 0 if (norm_a == 0 or norm_b == 0) else dot_product / (norm_a * norm_b)
+                emb = np.array(doc["embedding"])
+                norm_emb = np.linalg.norm(emb)
+                sim = 0 if (norm_query == 0 or norm_emb == 0) else np.dot(query_vec, emb) / (norm_query * norm_emb)
                 results.append((sim, doc["text"]))
             results.sort(key=lambda x: x[0], reverse=True)
             return [text for sim, text in results[:n_results]]
@@ -316,12 +317,12 @@ class SEIEngine:
         try:
             if ext.endswith('.pdf'):
                 try:
-                    from pypdf import PdfReader
-                    reader = PdfReader(filepath)
-                    for page in reader.pages:
-                        text = page.extract_text()
-                        if text:
-                            texto += text + "\n"
+                    import fitz
+                    with fitz.open(filepath) as doc:
+                        for page in doc:
+                            text = page.get_text()
+                            if text:
+                                texto += text + "\n"
                 except ImportError:
                     pass
             elif ext.endswith('.txt'):
@@ -334,8 +335,13 @@ class SEIEngine:
                         soup = BeautifulSoup(f.read(), 'html.parser')
                         texto = soup.get_text(separator='\n', strip=True)
                 except ImportError:
+                    import html
                     with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
-                        texto = f.read()
+                        raw_text = f.read()
+                        texto = re.sub(r'<(style|script)[^>]*>.*?</\1>', ' ', raw_text, flags=re.IGNORECASE | re.DOTALL)
+                        texto = re.sub(r'<[^>]+>', ' ', texto)
+                        texto = html.unescape(texto)
+                        texto = re.sub(r'\s+', ' ', texto).strip()
             elif ext.endswith('.docx'):
                 try:
                     import docx
@@ -345,9 +351,36 @@ class SEIEngine:
                     pass
         except Exception as e:
             logger.warning(f"Erro ao extrair texto de {filepath}: {e}")
+            
+        texto = re.sub(r'Documento assinado eletronicamente por.*?\.', '', texto, flags=re.DOTALL | re.IGNORECASE)
+        texto = re.sub(r'A autenticidade do documento pode ser conferida.*?código CRC.*?\.', '', texto, flags=re.DOTALL | re.IGNORECASE)
+        texto = re.sub(r'"Brasília - Patrimônio Cultural da Humanidade".*?(?=\n\n|$)', '', texto, flags=re.DOTALL | re.IGNORECASE)
+        texto = re.sub(r'Doc\. SEI/GDF.*?\n', '', texto, flags=re.IGNORECASE)
+
         return texto.strip()
 
-    def processar_pasta_com_ia(self, folderpath: str, historico: list = None) -> Dict[str, Any]:
+    def _get_regras_redacao(self) -> str:
+        """Lê regras de redação do config.json ou retorna as regras padrão."""
+        regras_padrao = (
+            "1. Não pode hífen no assunto.\n"
+            "2. A grafia correta é \"Sepan\" e não \"SEPAN\".\n"
+            "3. Não utilize negrito no nome da pessoa no endereçamento.\n"
+            "4. Siglas com até 3 letras devem ser totalmente em maiúsculas. Siglas com 4 letras ou mais devem ter apenas a primeira letra maiúscula e as demais minúsculas (ex: Suban, Sepan).\n"
+            "5. Datas devem ser SEMPRE escritas por extenso (ex: 14 de maio de 2026, e não 14/05/2026).\n"
+            "6. A abreviação de número para processos deve ser com \"n\" minúsculo (ex: processo nº).\n"
+            "7. No caso de circulares (memorando ou ofício), siga sempre a ordem alfabética das unidades/pastas.\n"
+            "8. Ao se basear em exemplos anteriores (ex: da Secex), faça as adequações necessárias na minuta (evite cópia integral sem revisão), lembrando sempre que quem assinará o documento será o Secretário."
+        )
+        try:
+            if os.path.exists("config.json"):
+                with open("config.json", "r", encoding="utf-8") as f:
+                    config = json.load(f)
+                    return config.get("regras_redacao", regras_padrao)
+        except Exception:
+            pass
+        return regras_padrao
+
+    def processar_pasta_com_ia(self, folderpath: str, historico: list = None, stream_callback=None) -> Dict[str, Any]:
         """
         Processa todos os documentos de uma pasta de processo SEI,
         busca exemplos no banco de vetores e gera resposta com Ollama (Local).
@@ -366,6 +399,7 @@ class SEIEngine:
             
             # 1. Extração de texto de arquivos dentro da pasta
             for root, dirs, files in os.walk(folderpath):
+                files.sort(key=lambda x: int(re.search(r'\[(\d+)\]', x).group(1)) if re.search(r'\[(\d+)\]', x) else 999999)
                 for file in files:
                     if file.lower().endswith(('.pdf', '.txt', '.html', '.htm', '.docx')):
                         filepath = os.path.join(root, file)
@@ -374,8 +408,8 @@ class SEIEngine:
             if not extracted_text.strip():
                 return {"sucesso": False, "erro": "Nenhum texto extraível foi encontrado nos arquivos da pasta (Podem ser arquivos sem OCR ou faltam bibliotecas)."}
 
-            # Limitar o texto para não estourar o contexto da IA local (8000 caracteres)
-            extracted_text = extracted_text[:8000]
+            # Limitar o texto para não estourar o contexto da IA (Foco no final do processo)
+            extracted_text = extracted_text[-8000:] if len(extracted_text) > 8000 else extracted_text
             
             # 2. Busca de Exemplos Passados (RAG com ChromaDB)
             contexto_historico = ""
@@ -389,51 +423,58 @@ class SEIEngine:
                 logger.error(f"Aviso Banco de Vetores (RAG falhou): {e}", exc_info=True)
             
             # 3. Prompt para o Ollama (IA Local)
-            system_prompt = f"""Você é um especialista em processos administrativos do Governo.
-Seu objetivo é analisar os documentos anexados do processo e gerar o texto completo do próximo documento a ser emitido neste fluxo (ofício, despacho, memorando, etc.).
+            regras_redacao = self._get_regras_redacao()
+            system_prompt = f"""Você é um ASSESSOR DE GABINETE da SEPAN-DF. Sua função é redigir a MINUTA COMPLETA de um documento oficial (Despacho ou Ofício) que será assinada pela chefia.
+
+=== EXEMPLOS DE ESTILO (REFERÊNCIA DE FORMATAÇÃO) ===
 {contexto_historico}
+=====================================================
 
-IMPORTANTE - Siga rigorosamente as seguintes regras ao redigir o texto gerado:
-1. Não pode hífen no assunto.
-2. A grafia correta é "Sepan" e não "SEPAN".
-3. Não utilize negrito no nome da pessoa no endereçamento.
-4. Siglas com até 3 letras devem ser totalmente em maiúsculas. Siglas com 4 letras ou mais devem ter apenas a primeira letra maiúscula e as demais minúsculas (ex: Suban, Sepan).
-5. Datas devem ser SEMPRE escritas por extenso (ex: 14 de maio de 2026, e não 14/05/2026).
-6. A abreviação de número para processos deve ser com "n" minúsculo (ex: processo nº).
-7. No caso de circulares (memorando ou ofício), siga sempre a ordem alfabética das unidades/pastas.
-8. Ao se basear em exemplos anteriores (ex: da Secex), faça as adequações necessárias na minuta (evite cópia integral sem revisão), lembrando sempre que quem assinará o documento será o Secretário.
+SUA TAREFA (CRÍTICA E OBRIGATÓRIA):
+Leia o "Texto do processo" enviado pelo usuário e REDIJA UM NOVO DOCUMENTO DO ZERO.
+- REGRA DE OURO: É ESTRITAMENTE PROIBIDO transcrever ou copiar os textos do processo integralmente. 
+- Use os textos fornecidos APENAS COMO BASE DE DADOS. Extraia os fatos, nomes, datas, números de protocolo e pedidos, e reescreva tudo com suas próprias palavras, usando o jargão administrativo formal.
+- É permitido citar pequenos trechos ou dados específicos exatamente como estão no original, mas a construção dos parágrafos e a argumentação devem ser de sua autoria.
+- Estrutura obrigatória: Cabeçalho do GDF, Introdução ("Trata-se de..."), Fundamentação técnica/justificativa (baseada nos fatos lidos), e Conclusão ("Encaminho os autos...").
 
-Responda EXCLUSIVAMENTE com um objeto JSON no formato abaixo:
-{{
-    "resumo": "Breve resumo da demanda (1 frase)",
-    "texto_gerado": "Sugestão de texto para o despacho..."
-}}"""
+REGRAS DE REDAÇÃO DO GABINETE:
+{regras_redacao}
+
+ATENÇÃO: Retorne APENAS o texto do documento em formato de texto puro. NÃO UTILIZE JSON. Não adicione saudações como "Aqui está o documento". Comece diretamente com o texto da minuta."""
 
             try:
                 resposta = ollama.chat(model='llama3.2', messages=[
                     {'role': 'system', 'content': system_prompt},
                     {'role': 'user', 'content': f"Texto do processo:\n\n{extracted_text}"}
-                ])
+                ], options={'temperature': 0.1}, stream=True)
             except Exception as e:
                 logger.error(f"Erro de comunicação com Ollama: {e}", exc_info=True)
                 return {"sucesso": False, "erro": f"Erro de comunicação com o modelo no Ollama: {str(e)}. Verifique se o modelo 'llama3.2' está instalado."}
             
-            conteudo_ia = resposta['message']['content']
+            conteudo_ia = ""
+            for chunk in resposta:
+                if 'message' in chunk and 'content' in chunk['message']:
+                    conteudo_ia += chunk['message']['content']
+                    if stream_callback:
+                        stream_callback(conteudo_ia)
             
-            # 4. Extração do JSON da resposta
-            match = re.search(r'\{.*\}', conteudo_ia, re.DOTALL)
-            dados_ia = json.loads(match.group(0)) if match else json.loads(conteudo_ia)
+            # Mantém o texto gerado (incluindo raciocínio) como texto livre
+            conteudo_ia_limpo = conteudo_ia.strip()
+            
+            # Inferir o tipo de documento pelo texto gerado
+            tipo_doc = "Despacho" if "Despacho" in conteudo_ia_limpo[:200] else "Ofício"
 
             return {
                 "sucesso": True,
-                "resumo": dados_ia.get("resumo", "Análise de IA concluída."),
-                "texto_gerado": dados_ia.get("texto_gerado", conteudo_ia)
+                "tipo_documento": tipo_doc,
+                "resumo": "Minuta gerada via IA",
+                "texto_gerado": conteudo_ia_limpo
             }
         except Exception as e:
             logger.error(f"Erro geral em processar_zip_com_ia: {e}", exc_info=True)
             return {"sucesso": False, "erro": str(e)}
 
-    def refinar_texto_com_ia(self, texto_atual: str, instrucao: str) -> Dict[str, Any]:
+    def refinar_texto_com_ia(self, texto_atual: str, instrucao: str, stream_callback=None) -> Dict[str, Any]:
         """Usa o Ollama para refinar um texto existente baseado nas instruções do usuário."""
         ollama_ok, erro_ollama = self._verificar_ollama()
         if not ollama_ok:
@@ -442,30 +483,32 @@ Responda EXCLUSIVAMENTE com um objeto JSON no formato abaixo:
         try:
             import ollama
             
-            system_prompt = """Você é um assistente administrativo especialista na redação de despachos do Governo.
-Seu objetivo é alterar um documento existente conforme as instruções do usuário.
+            regras_redacao = self._get_regras_redacao()
+            system_prompt = f"""Você é um assistente administrativo especialista na redação de despachos do Governo.
+Seu objetivo é alterar um documento oficial existente conforme as instruções do usuário.
+ATENÇÃO: NÃO RESUMA. Mantenha a formalidade, a extensão, a estrutura e os parágrafos do documento original, aplicando estritamente a mudança solicitada.
 
-IMPORTANTE - Siga rigorosamente as seguintes regras ao redigir o texto gerado:
-1. Não pode hífen no assunto.
-2. É Sepan e não SEPAN.
-3. Não tem negrito no nome da pessoa no endereçamento.
-4. As siglas com 3 letras se faz com todas maiúsculas; 4 ou mais somente a primeira é maiúscula e as demais minúsculas.
-5. Datas são SEMPRE escritas por extenso e não 14/5/2026. (14 de maio de 2026).
-6. O n° dos processos tem o "n" minúsculos mesmo.
-7. No caso de circulares (memorando ou ofício) sempre segue a ordem alfabética das unidades/pastas.
-8. Ao se basear em exemplos anteriores (ex: da Secex) tenha cuidado com o copia e cola, faça as alterações da minuta, lembrando sempre que o Secretário vai assinar.
+REGRAS:
+{regras_redacao}
 
-MUITO IMPORTANTE:
-Retorne APENAS o texto modificado pronto para ser usado, sem explicações extras e sem formatação markdown no início ou no fim."""
+Retorne APENAS o texto modificado pronto para uso."""
 
             prompt_user = f"Texto Atual:\n{texto_atual}\n\nInstrução do que deve ser alterado:\n{instrucao}\n\nReescreva o texto aplicando as alterações solicitadas."
 
             resposta = ollama.chat(model='llama3.2', messages=[
                 {'role': 'system', 'content': system_prompt},
                 {'role': 'user', 'content': prompt_user}
-            ])
+            ], stream=True)
             
-            return {"sucesso": True, "texto_gerado": resposta['message']['content'].strip()}
+            conteudo_ia = ""
+            for chunk in resposta:
+                if 'message' in chunk and 'content' in chunk['message']:
+                    conteudo_ia += chunk['message']['content']
+                    if stream_callback:
+                        stream_callback(conteudo_ia)
+                        
+            conteudo_ia_limpo = conteudo_ia.strip()
+            return {"sucesso": True, "texto_gerado": conteudo_ia_limpo}
         except Exception as e:
             logger.error(f"Erro ao refinar texto com IA: {e}", exc_info=True)
             return {"sucesso": False, "erro": str(e)}
