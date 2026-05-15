@@ -20,6 +20,7 @@ vetores_ia.json
 config.json
 dados_ultimo.json
 modelos_custom.json
+app_debug.log
 
 # Artefatos de Build / Executáveis (PyInstaller)
 build/

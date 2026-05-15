@@ -123,3 +123,23 @@ Traceback (most recent call last):
     texto_processo += self._extrair_texto_arquivo(filepath) + "\n\n"
                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 AttributeError: 'SEIEngine' object has no attribute '_extrair_texto_arquivo'
+2026-05-15 14:35:32,404 - AI_Worker_0 - httpcore.connection - DEBUG - connect_tcp.started host='127.0.0.1' port=11434 local_address=None timeout=None socket_options=None
+2026-05-15 14:35:32,408 - AI_Worker_0 - httpcore.connection - DEBUG - connect_tcp.complete return_value=<httpcore._backends.sync.SyncStream object at 0x000001DB5CD75E90>
+2026-05-15 14:35:32,409 - AI_Worker_0 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'POST']>
+2026-05-15 14:35:32,410 - AI_Worker_0 - httpcore.http11 - DEBUG - send_request_headers.complete
+2026-05-15 14:35:32,410 - AI_Worker_0 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'POST']>
+2026-05-15 14:35:32,410 - AI_Worker_0 - httpcore.http11 - DEBUG - send_request_body.complete
+2026-05-15 14:35:32,410 - AI_Worker_0 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'POST']>
+2026-05-15 14:39:27,201 - AI_Worker_0 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Content-Type', b'application/x-ndjson'), (b'Date', b'Fri, 15 May 2026 17:39:27 GMT'), (b'Transfer-Encoding', b'chunked')])
+2026-05-15 14:39:27,268 - AI_Worker_0 - httpx - INFO - HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+2026-05-15 14:39:27,285 - AI_Worker_0 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'POST']>
+2026-05-15 14:40:08,355 - AI_Worker_0 - httpcore.http11 - DEBUG - receive_response_body.complete
+2026-05-15 14:40:08,355 - AI_Worker_0 - httpcore.http11 - DEBUG - response_closed.started
+2026-05-15 14:40:08,355 - AI_Worker_0 - httpcore.http11 - DEBUG - response_closed.complete
+2026-05-15 14:45:37,710 - AI_Worker_0 - httpcore.connection - DEBUG - connect_tcp.started host='127.0.0.1' port=11434 local_address=None timeout=None socket_options=None
+2026-05-15 14:45:37,725 - AI_Worker_0 - httpcore.connection - DEBUG - connect_tcp.complete return_value=<httpcore._backends.sync.SyncStream object at 0x000001AA04358D90>
+2026-05-15 14:45:37,726 - AI_Worker_0 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'POST']>
+2026-05-15 14:45:37,727 - AI_Worker_0 - httpcore.http11 - DEBUG - send_request_headers.complete
+2026-05-15 14:45:37,727 - AI_Worker_0 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'POST']>
+2026-05-15 14:45:37,727 - AI_Worker_0 - httpcore.http11 - DEBUG - send_request_body.complete
+2026-05-15 14:45:37,728 - AI_Worker_0 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'POST']>

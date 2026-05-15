@@ -1,4 +1,4 @@
-﻿﻿"""
+﻿"""
 Gerador SEI - Main Application
 Modern interface for SEI document generation
 """
