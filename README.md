@@ -51,28 +51,13 @@ ollama run llama3.2
    python gerador_sei.py
    ```
 
-2. **Preencha os campos**:
-   - Ofício, Prazo, SEI Ofício, SEI Manifestação, Protocolo OUV, Resumo
+2. **Escolha do Molde IA**: No painel do assistente, deixe a opção **AUTO** para que a IA decida o formato ou obrigue a um estilo específico (ex: `OUVIDORIA MINUTA`, `DILACAO`).
 
-3. **Selecione o modelo** e clique em "Gerar Despacho"
+3. **Análise de Processo**: Clique em **📁 Analisar Processo (Pasta)** e selecione o diretório com os arquivos baixados do SEI (PDFs, Word, HTML).
 
-4. **Utilize as funcionalidades**:
-   - 📋 Copiar texto
-   - 💾 Salvar dados
-   - 📄 Exportar PDF
-   - 📚 Ver histórico
+4. **Revisão Natural**: A IA processará tudo e preencherá a tela de "Resultado". Se precisar de ajustes, peça livremente no chat (Ex: *"Mude o prazo para 10 dias úteis"*).
 
-## ⌨️ Atalhos de Teclado
-
-| Atalho | Função |
-|--------|--------|
-| `Ctrl+G` | Gerar Despacho |
-| `Ctrl+S` | Salvar Dados |
-| `Ctrl+L` | Carregar Dados |
-| `Ctrl+E` | Exportar PDF |
-| `Ctrl+Q` | Sair da aplicação |
-| `F11` | Alternar Tema (Dark/Light) |
-| `.` (data picker) | Abrir calendário |
+5. **Finalização**: Com a minuta aprovada, utilize os botões **📋 Copiar e Limpar** ou **📄 PDF** diretamente no rodapé da aplicação.
 
 ## 🏗️ Arquitetura
 
@@ -98,23 +83,10 @@ gerador_sei/
 
 ### Arquivos de Configuração
 - `config.json`: Configurações da aplicação (tema ativo, preferências de UI)
-- `dados_ultimo.json`: Últimos dados inseridos (para carregamento rápido)
+- `vetores_ia.json`: Banco de dados nativo RAG contendo memórias de aprendizado (TinyVectorDB)
 - `modelos_custom.json`: Modelos personalizados criados pelo usuário
 
 ### Formato dos Arquivos JSON
-
-**dados_ultimo.json**
-```json
-{
-  "campo_0": "778/2026",
-  "campo_1": "01/05/2026",
-  "campo_2": "198654234",
-  "campo_3": "220622554",
-  "campo_4": "OUV-078543/2026",
-  "campo_5": "Falta de vagas de castração",
-  "modelo": "HVeP - Atendimento/HVeP"
-}
-```
 
 **modelos_custom.json**
 ```json
