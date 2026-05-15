@@ -33,7 +33,8 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 
 from sei_templates import (
     PREFIXO_DOCUMENTO, RESUMO_CRONOGRAMA,
-    MODELO_HVEP, MODELO_CASTRACAO, MODELO_CONDICOES_HVEP, MODELO_CRONOGRAMA_CASTRACAO
+    MODELO_HVEP, MODELO_CASTRACAO, MODELO_CONDICOES_HVEP, MODELO_CRONOGRAMA_CASTRACAO,
+    MODELO_OUVIDORIA_SUBAN
 )
 
 logger = logging.getLogger(__name__)
@@ -103,7 +104,8 @@ class SEIEngine:
             "HVeP - Atendimento/HVeP": MODELO_HVEP,
             "Castração de Cães e Gatos": MODELO_CASTRACAO,
             "Condições de exames e cirurgia HVeP": MODELO_CONDICOES_HVEP,
-            "Demanda de Ouvidoria - Ausência de Cronograma Castração": MODELO_CRONOGRAMA_CASTRACAO
+            "Demanda de Ouvidoria - Ausência de Cronograma Castração": MODELO_CRONOGRAMA_CASTRACAO,
+            "Ouvidoria à Suban": MODELO_OUVIDORIA_SUBAN
         }
         self._load_custom_modelos()
 
@@ -123,7 +125,8 @@ class SEIEngine:
             "HVeP - Atendimento/HVeP",
             "Castração de Cães e Gatos",
             "Condições de exames e cirurgia HVeP",
-            "Demanda de Ouvidoria - Ausência de Cronograma Castração"
+            "Demanda de Ouvidoria - Ausência de Cronograma Castração",
+            "Ouvidoria à Suban"
         }
         custom = {k: v for k, v in self.modelos.items() if k not in defaults}
         try:
@@ -223,13 +226,19 @@ class SEIEngine:
         """Generate SEI dispatch text using named tag placeholders."""
         modelo = self.modelos.get(data.get("modelo", "HVeP - Atendimento/HVeP"), MODELO_HVEP)
 
+        hoje = datetime.date.today()
+        meses = ["janeiro", "fevereiro", "março", "abril", "maio", "junho",
+                 "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"]
+        data_atual = f"{hoje.day:02d} de {meses[hoje.month - 1]} de {hoje.year}"
+
         context = {
             "NUM_OFICIO": data.get("oficio", ""),
             "SEI_OFICIO": data.get("sei_oficio", ""),
             "SEI_MANIFESTACAO": data.get("sei_manifestacao", ""),
             "PROTOCOLO": data.get("protocolo", ""),
             "RESUMO": data.get("resumo", ""),
-            "PRAZO": self.format_prazo(data.get("prazo", ""))
+            "PRAZO": self.format_prazo(data.get("prazo", "")),
+            "DATA": data_atual
         }
 
         if isinstance(modelo, str):
@@ -249,7 +258,10 @@ class SEIEngine:
         else:
             corpo = ""
 
-        return PREFIXO_DOCUMENTO + corpo.strip()
+        corpo = corpo.strip()
+        if "À Subsecretaria de Bem-estar Animal" not in corpo:
+            return PREFIXO_DOCUMENTO + corpo
+        return corpo
 
     def export_to_pdf(self, text: str, filepath: str) -> Tuple[bool, str]:
         """Export text to PDF, retornando status e mensagem de erro quando aplicável."""
@@ -291,7 +303,8 @@ class SEIEngine:
             "HVeP - Atendimento/HVeP",
             "Castração de Cães e Gatos",
             "Condições de exames e cirurgia HVeP",
-            "Demanda de Ouvidoria - Ausência de Cronograma Castração"
+            "Demanda de Ouvidoria - Ausência de Cronograma Castração",
+            "Ouvidoria à Suban"
         }
 
         if nome in self.modelos and nome not in defaults:
@@ -384,7 +397,7 @@ class SEIEngine:
             pass
         return regras_padrao
 
-    def processar_pasta_com_ia(self, folderpath: str, historico: list = None, stream_callback=None) -> Dict[str, Any]:
+    def processar_pasta_com_ia(self, folderpath: str, historico: list = None, stream_callback=None, molde_ia: str = "AUTO") -> Dict[str, Any]:
         """
         Processa todos os documentos de uma pasta de processo SEI,
         busca exemplos no banco de vetores e gera resposta com Ollama (Local).
@@ -416,19 +429,26 @@ class SEIEngine:
             extracted_text = extracted_text[-8000:] if len(extracted_text) > 8000 else extracted_text
             
             # 1.5 Classificação do Processo (Routing)
-            prompt_class = f"Analise o texto a seguir e identifique o tipo de processo. Responda APENAS com UMA destas palavras: OUVIDORIA, DILACAO ou GENERICO.\n\nTexto: {extracted_text[:2000]}"
-            try:
-                res_class = ollama.chat(model='llama3.2', messages=[{'role': 'user', 'content': prompt_class}], options={'temperature': 0.1})
-                tipo_raw = res_class.get('message', {}).get('content', '').upper()
-                if 'OUVIDORIA' in tipo_raw: tipo_detectado = "OUVIDORIA"
-                elif 'DILACAO' in tipo_raw or 'DILAÇÃO' in tipo_raw: tipo_detectado = "DILACAO"
-                else: tipo_detectado = "GENERICO"
-            except Exception as e:
-                logger.error(f"Erro na classificação: {e}")
-                tipo_detectado = "GENERICO"
-                
-            if stream_callback:
-                stream_callback(f"[Classificação IA: {tipo_detectado}]\nGerando minuta...\n\n")
+            if molde_ia == "AUTO":
+                prompt_class = f"Analise o texto a seguir e identifique o tipo de processo. Responda APENAS com UMA destas palavras: OUVIDORIA MINUTA, OUVIDORIA SUBAN, DILACAO ou GENERICO.\n\nTexto: {extracted_text[:2000]}"
+                try:
+                    res_class = ollama.chat(model='llama3.2', messages=[{'role': 'user', 'content': prompt_class}], options={'temperature': 0.1})
+                    tipo_raw = res_class.get('message', {}).get('content', '').upper()
+                    if 'OUVIDORIA MINUTA' in tipo_raw: tipo_detectado = "OUVIDORIA MINUTA"
+                    elif 'OUVIDORIA SUBAN' in tipo_raw: tipo_detectado = "OUVIDORIA SUBAN"
+                    elif 'OUVIDORIA' in tipo_raw: tipo_detectado = "OUVIDORIA MINUTA"
+                    elif 'DILACAO' in tipo_raw or 'DILAÇÃO' in tipo_raw: tipo_detectado = "DILACAO"
+                    else: tipo_detectado = "GENERICO"
+                except Exception as e:
+                    logger.error(f"Erro na classificação: {e}")
+                    tipo_detectado = "GENERICO"
+                    
+                if stream_callback:
+                    stream_callback(f"[Classificação IA: {tipo_detectado}]\nGerando minuta...\n\n")
+            else:
+                tipo_detectado = molde_ia
+                if stream_callback:
+                    stream_callback(f"[Molde Selecionado: {tipo_detectado}]\nGerando minuta...\n\n")
 
             # 2. Busca de Exemplos Passados (RAG com ChromaDB)
             contexto_historico = ""
@@ -445,7 +465,8 @@ class SEIEngine:
             regras_redacao = self._get_regras_redacao()
             
             MOLDES_RIGIDOS = {
-                "OUVIDORIA": "Governo do Distrito Federal\nSepan\nAssessoria Especial\n\nBrasília, [DATA].\n\nAssunto: Demanda de Ouvidoria. [TEMA].\n\n1. Trata-se de [HISTÓRICO].\n\nAo Senhor Ouvidor...\nMINUTA\n\n1. Senhor Ouvidor, esclarecemos que [RESPOSTA].",
+                "OUVIDORIA MINUTA": "Governo do Distrito Federal\nSepan\nAssessoria Especial\n\nBrasília, [DATA].\n\nAssunto: Demanda de Ouvidoria. [TEMA].\n\n1. Trata-se de [HISTÓRICO].\n\nAo Senhor Ouvidor...\nMINUTA\n\n1. Senhor Ouvidor, esclarecemos que [RESPOSTA].",
+                "OUVIDORIA SUBAN": "Despacho - SEPAN/GAB/ASSESP\n\nBrasília, [DATA].\n\nÀ Subsecretaria de Bem-estar Animal (Suban),\n\nAssunto: Demanda de Ouvidoria. [TEMA].\n\nSUJEITO A PRAZO\n\n1. Trata-se do Ofício nº [OFÍCIO] - CACI/GAB/OUVIDORIA ([SEI OFÍCIO]) por meio do qual a Ouvidoria da Casa Civil do Distrito Federal solicita providências quanto a [RESUMO DA DEMANDA], conforme especifica na Manifestação ([SEI MANIFESTAÇÃO]), referente ao Protocolo: [PROTOCOLO].\n\n2. Encaminho os autos para conhecimento e providências, com a brevidade que o assunto requer, considerando que o prazo de resposta a Secretaria Executiva é, impreterivelmente, [PRAZO], conforme Art. 5º, da LEI Nº 4.896, DE 31 DE JULHO DE 2012.",
                 "DILACAO": "Governo do Distrito Federal\nSepan\n[UNIDADE]\n\nBrasília, [DATA].\n\nAssunto: Dilação de Prazo.\n\n1. Trata-se do processo nº [PROT], solicitamos dilação de [DIAS] dias devido a [MOTIVO].",
                 "GENERICO": "Governo do Distrito Federal\nSecretaria Extraordinária de Proteção Animal do Distrito Federal\nGabinete\n\nBrasília, [DATA].\n\nAssunto: [Tema da demanda].\n\n1. Trata-se de [Explicar a demanda do processo].\n\n2. Sobre o tema, esclarecemos que [Descreva a análise técnica e considerações pertinentes em um parágrafo fluido].\n\n3. Encaminho os autos para [Destino da resposta], dando-se por concluída a presente instrução."
             }

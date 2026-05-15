@@ -33,3 +33,19 @@ Trata-se do Ofício Nº {NUM_OFICIO} - CACI/GAB/OUVIDORIA ({SEI_OFICIO}) por mei
 
 Encaminho os autos para conhecimento e providências, com a brevidade que o assunto requer, considerando que o prazo de resposta a Secretaria Executiva é, impreterivelmente, {PRAZO}, conforme Art. 5º, da LEI Nº 4.896, DE 31 DE JULHO DE 2012.
 """
+
+MODELO_OUVIDORIA_SUBAN = """
+Despacho - SEPAN/GAB/ASSESP
+
+Brasília, {DATA}.
+
+À Subsecretaria de Bem-estar Animal (Suban),
+
+Assunto: Demanda de Ouvidoria. {RESUMO}.
+
+SUJEITO A PRAZO
+
+Trata-se do Ofício nº {NUM_OFICIO} - CACI/GAB/OUVIDORIA ({SEI_OFICIO}) por meio do qual a Ouvidoria da Casa Civil do Distrito Federal solicita providências quanto às {RESUMO}, conforme especifica na Manifestação ({SEI_MANIFESTACAO}), referente ao Protocolo: {PROTOCOLO}.
+
+Encaminho os autos para conhecimento e providências, com a brevidade que o assunto requer, considerando que o prazo de resposta a Secretaria Executiva é, impreterivelmente, {PRAZO}, conforme Art. 5º, da LEI Nº 4.896, DE 31 DE JULHO DE 2012.
+"""

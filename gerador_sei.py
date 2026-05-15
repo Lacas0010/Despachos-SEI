@@ -109,18 +109,25 @@ class GeradorSEIApp(ctk.CTk):
     def _build_chat_panel(self, parent, col):
         frame = ctk.CTkFrame(parent, fg_color=get_color_tuple("surface"), corner_radius=12)
         frame.grid(row=0, column=col, sticky="nsew", padx=(0, 10))
-        frame.grid_rowconfigure(2, weight=1)
+        frame.grid_rowconfigure(3, weight=1)
         frame.grid_columnconfigure(0, weight=1)
         
         ctk.CTkLabel(frame, text="🤖 Assistente de IA", font=ctk.CTkFont(size=16, weight="bold")).grid(row=0, column=0, sticky="w", pady=(10, 10), padx=10)
         
-        ctk.CTkButton(frame, text="📁 Analisar Processo (Pasta)", command=self._on_analisar_pasta, height=40, font=ctk.CTkFont(weight="bold")).grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 10))
+        molde_frame = ctk.CTkFrame(frame, fg_color="transparent")
+        molde_frame.grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 10))
+        ctk.CTkLabel(molde_frame, text="Molde IA:", font=ctk.CTkFont(size=12)).pack(side="left", padx=(0, 5))
+        self.ia_molde_var = tk.StringVar(value="AUTO")
+        self.ia_molde_combo = ctk.CTkComboBox(molde_frame, variable=self.ia_molde_var, values=["AUTO", "OUVIDORIA MINUTA", "OUVIDORIA SUBAN", "DILACAO", "GENERICO"], state="readonly", height=28)
+        self.ia_molde_combo.pack(side="left", fill="x", expand=True)
+        
+        ctk.CTkButton(frame, text="📁 Analisar Processo (Pasta)", command=self._on_analisar_pasta, height=40, font=ctk.CTkFont(weight="bold")).grid(row=2, column=0, sticky="ew", padx=10, pady=(0, 10))
         
         self.chat_history = ctk.CTkTextbox(frame, font=ctk.CTkFont(size=13), wrap="word", state="disabled")
-        self.chat_history.grid(row=2, column=0, sticky="nsew", padx=10, pady=(0, 10))
+        self.chat_history.grid(row=3, column=0, sticky="nsew", padx=10, pady=(0, 10))
         
         input_frame = ctk.CTkFrame(frame, fg_color="transparent")
-        input_frame.grid(row=3, column=0, sticky="ew", padx=10, pady=(0, 10))
+        input_frame.grid(row=4, column=0, sticky="ew", padx=10, pady=(0, 10))
         input_frame.grid_columnconfigure(0, weight=1)
         
         self.chat_input = ctk.CTkEntry(input_frame, placeholder_text="O que alterar?", height=35)
@@ -260,12 +267,13 @@ class GeradorSEIApp(ctk.CTk):
     def _on_analisar_pasta(self):
         path = filedialog.askdirectory(title="Selecione a pasta do processo")
         if not path: return
+        molde_selecionado = getattr(self, "ia_molde_var", tk.StringVar(value="AUTO")).get()
         self.status_label.configure(text="Analisando IA...", text_color=get_color_tuple("warning"))
         self._show_progress()
-        self.ai_executor.submit(self._process_ia, path)
+        self.ai_executor.submit(self._process_ia, path, molde_selecionado)
 
-    def _process_ia(self, path):
-        res = self.engine.processar_pasta_com_ia(path, stream_callback=self._on_stream_update)
+    def _process_ia(self, path, molde_selecionado="AUTO"):
+        res = self.engine.processar_pasta_com_ia(path, stream_callback=self._on_stream_update, molde_ia=molde_selecionado)
         self.schedule_task(lambda: self._apply_ia_result(res))
 
     def _apply_ia_result(self, res):
