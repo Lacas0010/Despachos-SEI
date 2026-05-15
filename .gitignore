@@ -25,4 +25,7 @@ modelos_custom.json
 build/
 dist/
 *.spec
+*.exe
 .chroma/
+chroma_db/
+dlls/
