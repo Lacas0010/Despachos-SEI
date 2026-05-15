@@ -366,10 +366,14 @@ class SEIEngine:
             "2. A grafia correta é \"Sepan\" e não \"SEPAN\".\n"
             "3. Não utilize negrito no nome da pessoa no endereçamento.\n"
             "4. Siglas com até 3 letras devem ser totalmente em maiúsculas. Siglas com 4 letras ou mais devem ter apenas a primeira letra maiúscula e as demais minúsculas (ex: Suban, Sepan).\n"
-            "5. Datas devem ser SEMPRE escritas por extenso (ex: 14 de maio de 2026, e não 14/05/2026).\n"
+            "5. Datas devem ser SEMPRE escritas por extenso e o local deve ser sempre 'Brasília' (ex: Brasília, 14 de maio de 2026, e nunca 'Brasil, 14/05/2026').\n"
             "6. A abreviação de número para processos deve ser com \"n\" minúsculo (ex: processo nº).\n"
-            "7. No caso de circulares (memorando ou ofício), siga sempre a ordem alfabética das unidades/pastas.\n"
-            "8. Ao se basear em exemplos anteriores (ex: da Secex), faça as adequações necessárias na minuta (evite cópia integral sem revisão), lembrando sempre que quem assinará o documento será o Secretário."
+            "7. Todo documento oficial do GDF deve ter seus parágrafos numerados em ordem crescente (ex: 1. Trata-se de..., 2. Sobre o tema..., 3. Encaminho...).\n"
+            "8. É OBRIGATÓRIO incluir a linha 'Assunto:' no topo do documento logo após o cabeçalho e a data.\n"
+            "9. Se o processo for de Ouvidoria, adicione logo abaixo do despacho a palavra 'MINUTA' centralizada, seguida da sugestão de resposta formal direcionada ao Ouvidor (Senhor Ouvidor...).\n"
+            "10. É ESTRITAMENTE PROIBIDO gerar rodapés de assinatura eletrônica, linhas em branco para assinar (_______) ou blocos de autenticidade. O documento deve terminar imediatamente no parágrafo de encaminhamento ou na palavra 'Atenciosamente'.\n"
+            "11. No caso de circulares (memorando ou ofício), siga sempre a ordem alfabética das unidades/pastas.\n"
+            "12. Ao se basear em exemplos anteriores (ex: da Secex), faça as adequações necessárias na minuta (evite cópia integral sem revisão), lembrando sempre que quem assinará o documento será o Secretário."
         )
         try:
             if os.path.exists("config.json"):
