@@ -8,7 +8,7 @@ Uma aplicação desktop moderna e inteligente para geração, análise e refinam
 - **Análise de Processos**: Extração automática de contexto a partir de pastas inteiras contendo PDFs (com suporte a OCR via bibliotecas externas), arquivos do Word (DOCX), HTML e TXT.
 - **Assistente Interativo (Chat)**: Converse com a IA para refinar, alterar o tom ou corrigir documentos gerados com comandos em linguagem natural (Ex: "Troque a data de hoje para amanhã").
 - **Privacidade e Segurança**: O processamento (Inferência e Embeddings) é feito offline na máquina do usuário, protegendo dados sensíveis do governo.
-- **Redação Padronizada GDF**: A IA é configurada com 12 regras estritas de formatação e redação (ex: numeração de parágrafos, formatação de datas, padronização de siglas e proibição de cópias literais).
+- **Redação Padronizada GDF**: A IA é configurada com regras estritas de formatação e redação, incluindo regra de **impessoalidade estrita** (3ª pessoa e partícula apassivadora "se") e diretriz rígida de **paráfrase anti-cópia** (com uso de *few-shot prompting*) para evitar plágio literal de despachos anteriores (como os da SECEX).
 
 ### 📚 Aprendizado Contínuo (RAG Local)
 - **Memória de Processos**: O aplicativo lê pastas com processos anteriores e aprende o padrão e formato dos despachos.
@@ -77,7 +77,7 @@ gerador_sei/
 - **GeradorSEIApp**: Classe principal da aplicação
 - **SEIEngine**: Motor de geração de despachos
 - **ThemeManager**: Gerenciador de temas dark/light
-- **Screen Classes**: Telas modulares (GenerarScreen, HistoricoScreen, etc.)
+- **Single-Page Layout**: Interface unificada gerenciada diretamente pela classe principal via grids modulares.
 
 ## 📁 Estrutura de Dados
 
@@ -94,3 +94,72 @@ gerador_sei/
   "Meu Modelo": "Conteúdo do {SEI_OFICIO} com placeholders..."
 }
 ```
+
+### Placeholders Disponíveis
+- `{NUM_OFICIO}` - Número do ofício
+- `{SEI_OFICIO}` - SEI do ofício
+- `{SEI_MANIFESTACAO}` - SEI da manifestação
+- `{PROTOCOLO}` - Protocolo OUV
+- `{PROTOCOLO}` - Resumo da manifestação
+- `{PRAZO}` - Data de prazo calculada
+```
+
+## 📋 Changelog (v2.0)
+
+### Novo
+- ✨ Atalhos de prazo (`+5d`, `+15d`, `+30d`) para cálculo rápido
+- ✨ Cards modernos para exibição do histórico
+- ✨ Validação visual em tempo real (cores na borda dos campos)
+- ✨ Sidebar retrátil para economia de espaço
+- ✨ Busca instantânea de modelos
+- ✨ Duplicar modelo existente
+- ✨ Botão "Copiar e Limpar" combinado
+- ✨ Feedback visual de processamento
+- ✨ Função `calcular_data_prazo()` centralizada
+
+### Melhorado
+- 🔧 Layout em blocos de seções (Documento, Manifestação, etc.)
+- 🔧 Fonte monoespaciada (Consolas) para melhor legibilidade de despachos
+- 🔧 Validação de SEI e Protocolo com regex
+- 🔧 Status bar com informações de processamento
+- 🔧 Histórico com ações diretas (reutilizar, copiar)
+- 🔧 Atalhos de teclado expandidos
+
+### Corrigido
+- 🐛 Problemas de layout com sobreposição de campos
+- 🐛 Erros de tipos no analyzer (Pylance/mypy)
+- 🐛 Tratamento de atributos opcional (`None`)
+
+## 🚀 Performance
+
+- ⚡ Carregamento instantâneo de modelos
+- ⚡ Filtro de busca sem lag
+- ⚡ Renderização de cards otimizada
+- ⚡ Cálculo de datas eficiente
+
+## 🤝 Contribuição
+
+1. Fork o projeto
+2. Crie uma branch para sua feature (`git checkout -b feature/AmazingFeature`)
+3. Commit suas mudanças (`git commit -m 'Add some AmazingFeature'`)
+4. Push para a branch (`git push origin feature/AmazingFeature`)
+5. Abra um Pull Request
+
+## 📝 Licença
+
+Este projeto está sob a licença MIT. Veja o arquivo `LICENSE` para mais detalhes.
+
+## 🐛 Reportar Problemas
+
+Encontrou um bug ou tem uma sugestão? Abra uma [issue](https://github.com/seu-usuario/gerador-sei/issues) no GitHub.
+
+## 🙏 Agradecimentos
+
+- [CustomTkinter](https://github.com/TomSchimansky/CustomTkinter) - Framework de interface moderna
+- [tkcalendar](https://github.com/j4321/tkcalendar) - Widget de calendário
+- [ReportLab](https://www.reportlab.com/) - Geração de PDFs
+- [PIL](https://python-pillow.org/) - Processamento de imagens
+
+---
+
+**Desenvolvido com ❤️ para facilitar o trabalho com SEI**
