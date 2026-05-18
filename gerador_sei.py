@@ -378,5 +378,8 @@ class GeradorSEIApp(ctk.CTk):
 
 
 if __name__ == "__main__":
-    app = GeradorSEIApp()
-    app.mainloop()
+    try:
+        app = GeradorSEIApp()
+        app.mainloop()
+    except KeyboardInterrupt:
+        print("\nAplicação encerrada pelo usuário.")

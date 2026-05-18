@@ -407,6 +407,10 @@ class SEIEngine:
         if not ollama_ok:
             return {"sucesso": False, "erro": erro_ollama}
 
+        meses = ['', 'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro']
+        hoje = datetime.datetime.now()
+        data_atual = f"{hoje.day} de {meses[hoje.month]} de {hoje.year}"
+
         extracted_text = ""
         try:
             try:
@@ -464,35 +468,41 @@ class SEIEngine:
             # 3. Prompt para o Ollama (IA Local)
             regras_redacao = self._get_regras_redacao()
             
+            molde_ouvidoria = f"Governo do Distrito Federal\nSecretaria Extraordinária de Proteção Animal do Distrito Federal\nGabinete\nAssessoria Especial\n\nDespacho - SEPAN/GAB/ASSESP\n\nBrasília, {data_atual}.\n\nAo Gabinete,\n\nAssunto: Demanda de Ouvidoria. (INSERIR AQUI O ASSUNTO RESUMIDO).\n\n1. Trata-se da reclamação registrada na Ouvidoria sob Ofício nº (INSERIR NUMERO), referente à Manifestação (INSERIR PROTOCOLO), na qual o cidadão (INSERIR RESUMO DA DEMANDA).\n\n2. Sobre o tema, esclarecemos que (INSERIR A RESPOSTA TÉCNICA E A JUSTIFICATIVA DE FORMA FLUIDA).\n\n3. Encaminham-se os autos para conhecimento e adoção de providências.\n\nAtenciosamente,"
+
             MOLDES_RIGIDOS = {
-                "OUVIDORIA MINUTA": "Governo do Distrito Federal\nSepan\nAssessoria Especial\n\nBrasília, [DATA].\n\nAssunto: Demanda de Ouvidoria. [TEMA].\n\n1. Trata-se de [HISTÓRICO].\n\nAo Senhor Ouvidor...\nMINUTA\n\n1. Senhor Ouvidor, esclarecemos que [RESPOSTA].",
-                "OUVIDORIA SUBAN": "Despacho - SEPAN/GAB/ASSESP\n\nBrasília, [DATA].\n\nÀ Subsecretaria de Bem-estar Animal (Suban),\n\nAssunto: Demanda de Ouvidoria. [TEMA].\n\nSUJEITO A PRAZO\n\n1. Trata-se do Ofício nº [OFÍCIO] - CACI/GAB/OUVIDORIA ([SEI OFÍCIO]) por meio do qual a Ouvidoria da Casa Civil do Distrito Federal solicita providências quanto a [RESUMO DA DEMANDA], conforme especifica na Manifestação ([SEI MANIFESTAÇÃO]), referente ao Protocolo: [PROTOCOLO].\n\n2. Encaminho os autos para conhecimento e providências, com a brevidade que o assunto requer, considerando que o prazo de resposta a Secretaria Executiva é, impreterivelmente, [PRAZO], conforme Art. 5º, da LEI Nº 4.896, DE 31 DE JULHO DE 2012.",
-                "DILACAO": "Governo do Distrito Federal\nSepan\n[UNIDADE]\n\nBrasília, [DATA].\n\nAssunto: Dilação de Prazo.\n\n1. Trata-se do processo nº [PROT], solicitamos dilação de [DIAS] dias devido a [MOTIVO].",
-                "GENERICO": "Governo do Distrito Federal\nSecretaria Extraordinária de Proteção Animal do Distrito Federal\nGabinete\n\nBrasília, [DATA].\n\nAssunto: [Tema da demanda].\n\n1. Trata-se de [Explicar a demanda do processo].\n\n2. Sobre o tema, esclarecemos que [Descreva a análise técnica e considerações pertinentes em um parágrafo fluido].\n\n3. Encaminho os autos para [Destino da resposta], dando-se por concluída a presente instrução."
+                "OUVIDORIA MINUTA": molde_ouvidoria,
+                "OUVIDORIA SUBAN": molde_ouvidoria,
+                "OUVIDORIA": molde_ouvidoria,
+                "DILACAO": f"Governo do Distrito Federal\nSecretaria Extraordinária de Proteção Animal do Distrito Federal\n\nBrasília, {data_atual}.\n\nAssunto: Dilação de Prazo.\n\n1. Trata-se do processo nº (INSERIR NUMERO), referente a (INSERIR TEMA).\n\n2. Solicitamos a dilação de prazo por mais 05 (cinco) dias devido à (INSERIR JUSTIFICATIVA DE COMPLEXIDADE DA DEMANDA).\n\n3. Encaminho os autos para as devidas providências.\n\nAtenciosamente,",
+                "GENERICO": f"Governo do Distrito Federal\nSecretaria Extraordinária de Proteção Animal do Distrito Federal\nGabinete\n\nBrasília, {data_atual}.\n\nAssunto: (INSERIR AQUI O ASSUNTO RESUMIDO).\n\n1. Trata-se de (INSERIR EXPLICACAO DA DEMANDA).\n\n2. Sobre o tema, esclarecemos que (INSERIR A RESPOSTA TECNICA DE FORMA FLUIDA).\n\n3. Encaminho os autos para as devidas providências.\n\nAtenciosamente,"
             }
             molde_escolhido = MOLDES_RIGIDOS.get(tipo_detectado, MOLDES_RIGIDOS["GENERICO"])
             
-            system_prompt = f"""Você é um ASSESSOR DE GABINETE da SEPAN-DF. Sua função é analisar os fatos do processo e escrever uma MINUTA OFICIAL ÚNICA E COESA.
+            system_prompt = f"""Você é um ASSESSOR DE GABINETE da SEPAN-DF. Redija a MINUTA COMPLETA de um documento oficial.
 
-REGRA CRÍTICA: NÃO copie e cole parágrafos dos documentos originais. Sintetize as informações em um texto fluido. Não crie listas repetitivas.
-
-Você deve OBRIGATORIAMENTE seguir este molde:
-
-MOLDE OBRIGATÓRIO DE REDAÇÃO:
+MOLDE OBRIGATÓRIO (SIGA ESTA ESTRUTURA RIGOROSAMENTE):
 {molde_escolhido}
 
-Substitua apenas o que está entre colchetes, mantendo a numeração de parágrafos e a estrutura oficial.
+SUA TAREFA (CRÍTICA):
+1. Leia o texto e PREENCHA as áreas indicadas por parênteses (como "(INSERIR AQUI)") com os dados REAIS do processo.
+2. PARÁFRASE E REESCRITA OBRIGATÓRIA (ANTI-CÓPIA): É EXPRESSAMENTE PROIBIDO utilizar sequências de frases ou parágrafos idênticos aos dos documentos da pasta (especialmente despachos da SECEX). Você deve extrair exclusivamente os fatos brutos e REESCREVER a argumentação técnica do zero, alterando a estrutura das sentenças e utilizando sinônimos administrativos. 
+   - Exemplo de reescrita exigida: Em vez de manter "realiza diariamente elevado volume de atendimentos...", altere para "absorve uma expressiva demanda operacional cotidiana...".
+   - Em vez de manter "ocorrem exclusivamente em caráter acadêmico...", altere para "possuem finalidade estritamente educacional sob tutela profissional...".
+   - Em vez de manter "será objeto de acompanhamento no âmbito das ações...", altere para "será incorporado às rotinas de monitoramento e inspeções periódicas...".
+3. ESTRUTURA LIVRE: Você pode criar quantos parágrafos numerados forem necessários (2., 3., 4., etc.) para organizar a argumentação técnica de forma clara e fluida, desde que o texto seja de sua autoria.
+4. ATENÇÃO AO REMETENTE: Você está redigindo pela Assessoria Especial (ASSESP). NÃO copie jargões de outros setores (como SECEX).
+5. REGRA DE IMPESSOALIDADE (CRÍTICA): É terminantemente PROIBIDO utilizar a primeira pessoa do plural na redação (como "esclarecemos", "informamos", "solicitamos", "encaminhamos"). Toda a minuta deve ser redigida de forma estritamente impessoal, adotando a terceira pessoa do singular acompanhada da partícula apassivadora 'se' (exemplos corretos: "esclarece-se que", "informa-se que", "solicita-se a dilação", "encaminha-se o processo").
+6. Pare a geração de texto IMEDIATAMENTE após a palavra "Atenciosamente,".
 
 REGRAS DE FORMATAÇÃO:
-{regras_redacao}
-
-ATENÇÃO: Retorne APENAS o texto preenchido do molde acima. Não invente novos tópicos e não use JSON."""
+{regras_redacao}"""
 
             try:
                 resposta = ollama.chat(model='llama3.2', messages=[
                     {'role': 'system', 'content': system_prompt},
-                    {'role': 'user', 'content': f"Texto do processo:\n\n{extracted_text}"}
-                ], options={'temperature': 0.1}, stream=True)
+                    {'role': 'user', 'content': f"Preencha rigorosamente o MOLDE OFICIAL com as informações do texto abaixo. Lembre-se de retornar o documento completo.\n\nTexto do processo:\n{extracted_text}"}
+                ], options={'temperature': 0.0}, stream=True)
             except Exception as e:
                 logger.error(f"Erro de comunicação com Ollama: {e}", exc_info=True)
                 return {"sucesso": False, "erro": f"Erro de comunicação com o modelo no Ollama: {str(e)}. Verifique se o modelo 'llama3.2' está instalado."}
@@ -507,6 +517,16 @@ ATENÇÃO: Retorne APENAS o texto preenchido do molde acima. Não invente novos 
             # Mantém o texto gerado (incluindo raciocínio) como texto livre
             conteudo_ia_limpo = conteudo_ia.strip()
             
+            # --- GUILHOTINA DE PÓS-PROCESSAMENTO ---
+            # 1. Remove títulos indesejados no topo gerados pela IA
+            conteudo_ia_limpo = re.sub(r'^(?:\*\*MINUTA COMPLETA\*\*|MINUTA COMPLETA|Aqui está a minuta:.*|MOLDE:.*)\s*\n+', '', conteudo_ia_limpo, flags=re.IGNORECASE).strip()
+
+            # 2. Corta absolutamente tudo que vier depois da assinatura
+            match_assinatura = re.search(r'(Atenciosamente,?)', conteudo_ia_limpo, re.IGNORECASE)
+            if match_assinatura:
+                conteudo_ia_limpo = conteudo_ia_limpo[:match_assinatura.end()]
+            # ---------------------------------------
+
             # Inferir o tipo de documento pelo texto gerado
             tipo_doc = "Despacho" if "Despacho" in conteudo_ia_limpo[:200] else "Ofício"
 
