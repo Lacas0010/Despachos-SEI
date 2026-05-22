@@ -429,9 +429,15 @@ class SEIEngine:
             if not extracted_text.strip():
                 return {"sucesso": False, "erro": "Nenhum texto extraível foi encontrado nos arquivos da pasta (Podem ser arquivos sem OCR ou faltam bibliotecas)."}
 
+            # Extrai o Assunto prioritariamente do Despacho da ASSESP (faz isso antes de truncar o texto)
+            assunto_match = re.search(r'Despacho - SEPAN/GAB/ASSESP.*?Assunto:\s*([^\n]+)', extracted_text, re.IGNORECASE | re.DOTALL)
+            if not assunto_match:
+                assunto_match = re.search(r'Assunto:\s*([^\n]+)', extracted_text, re.IGNORECASE)
+            assunto_extraido = assunto_match.group(1).strip() if assunto_match else ""
+
             # Limitar o texto para não estourar o contexto da IA (Foco no final do processo)
             extracted_text = extracted_text[-8000:] if len(extracted_text) > 8000 else extracted_text
-            
+
             # 1.5 Classificação do Processo (Routing)
             if molde_ia == "AUTO":
                 prompt_class = f"Analise o texto a seguir e identifique o tipo de processo. Responda APENAS com UMA destas palavras: OUVIDORIA MINUTA, OUVIDORIA SUBAN, DILACAO ou GENERICO.\n\nTexto: {extracted_text[:2000]}"
@@ -479,6 +485,10 @@ class SEIEngine:
             }
             molde_escolhido = MOLDES_RIGIDOS.get(tipo_detectado, MOLDES_RIGIDOS["GENERICO"])
             
+            # Substitui o placeholder do assunto se for uma ouvidoria e o assunto foi encontrado
+            if tipo_detectado == "OUVIDORIA MINUTA" and assunto_extraido:
+                molde_escolhido = molde_escolhido.replace("(INSERIR AQUI O ASSUNTO RESUMIDO)", assunto_extraido)
+
             system_prompt = f"""Você é um ASSESSOR DE GABINETE EXTREMAMENTE RIGOROSO e AUTORAL da SEPAN-DF. Sua função é redigir a MINUTA COMPLETA de um documento oficial.
 Você atua como um FILTRO. Você NUNCA repete o que os outros setores escreveram. Você lê, compreende, sintetiza e escreve a sua própria versão dos fatos.
 
