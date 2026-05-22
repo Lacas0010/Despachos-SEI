@@ -89,7 +89,7 @@ class GeradorSEIApp(ctk.CTk):
         header.grid(row=0, column=0, sticky="ew")
         header.grid_propagate(False)
         
-        ctk.CTkLabel(header, text="Gerador de Despacho SEI (IA)", font=ctk.CTkFont(size=20, weight="bold")).pack(side="left", padx=20)
+        ctk.CTkLabel(header, text="Gerador de Despacho SEI (Ollama)", font=ctk.CTkFont(size=20, weight="bold")).pack(side="left", padx=20)
         
         self.theme_btn = ctk.CTkButton(header, text="☀️" if self.theme_manager.is_dark else "🌙", width=40, command=self._toggle_theme, fg_color="transparent", border_width=1)
         self.theme_btn.pack(side="right", padx=20, pady=15)
@@ -112,11 +112,11 @@ class GeradorSEIApp(ctk.CTk):
         frame.grid_rowconfigure(3, weight=1)
         frame.grid_columnconfigure(0, weight=1)
         
-        ctk.CTkLabel(frame, text="🤖 Assistente de IA", font=ctk.CTkFont(size=16, weight="bold")).grid(row=0, column=0, sticky="w", pady=(10, 10), padx=10)
+        ctk.CTkLabel(frame, text="🤖 Assistente", font=ctk.CTkFont(size=16, weight="bold")).grid(row=0, column=0, sticky="w", pady=(10, 10), padx=10)
         
         molde_frame = ctk.CTkFrame(frame, fg_color="transparent")
         molde_frame.grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 10))
-        ctk.CTkLabel(molde_frame, text="Molde IA:", font=ctk.CTkFont(size=12)).pack(side="left", padx=(0, 5))
+        ctk.CTkLabel(molde_frame, text="Molde do Documento:", font=ctk.CTkFont(size=12)).pack(side="left", padx=(0, 5))
         self.ia_molde_var = tk.StringVar(value="AUTO")
         self.ia_molde_combo = ctk.CTkComboBox(molde_frame, variable=self.ia_molde_var, values=["AUTO", "OUVIDORIA MINUTA", "OUVIDORIA SUBAN", "DILACAO", "GENERICO"], state="readonly", height=28)
         self.ia_molde_combo.pack(side="left", fill="x", expand=True)
@@ -148,7 +148,7 @@ class GeradorSEIApp(ctk.CTk):
         
         self.text_saida = ctk.CTkTextbox(frame, font=ctk.CTkFont(size=14, family="Consolas"), wrap="word")
         self.text_saida.grid(row=1, column=0, sticky="nsew", padx=15, pady=(0, 15))
-        self.text_saida.insert("1.0", "O documento gerado aparecerá aqui...")
+        self.text_saida.insert("1.0", "O documento a do aparecerá aqui...")
         
         footer = ctk.CTkFrame(frame, fg_color="transparent")
         footer.grid(row=2, column=0, sticky="ew", padx=15, pady=(0, 15))
@@ -170,7 +170,7 @@ class GeradorSEIApp(ctk.CTk):
         header = ctk.CTkFrame(frame, fg_color="transparent")
         header.grid(row=0, column=0, sticky="ew", padx=15, pady=15)
         ctk.CTkLabel(header, text="📚 Histórico", font=ctk.CTkFont(size=16, weight="bold")).pack(side="left")
-        ctk.CTkButton(header, text="Alimentar IA", command=self._on_alimentar_ia, width=100, height=28, fg_color=get_color_tuple("secondary")).pack(side="right")
+        ctk.CTkButton(header, text="Alimentar Ollama", command=self._on_alimentar_ia, width=100, height=28, fg_color=get_color_tuple("secondary")).pack(side="right")
         
         self.historico_scroll = ctk.CTkScrollableFrame(frame, fg_color="transparent")
         self.historico_scroll.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 10))
@@ -208,35 +208,50 @@ class GeradorSEIApp(ctk.CTk):
         self._add_to_chat("Você", msg)
         
         texto_atual = self.text_saida.get("1.0", tk.END).strip()
-        if not texto_atual or texto_atual == "O despacho gerado aparecerá aqui...":
-            self._add_to_chat("IA", "Por favor, primeiro analise um processo (ZIP) para termos um texto base.")
-            return
-            
-        self.status_label.configure(text="IA pensando...", text_color=get_color_tuple("warning"))
-        self._show_progress()
-        self.ai_executor.submit(self._process_chat, msg, texto_atual)
+        # Se a caixa de texto estiver vazia ou com o placeholder, é uma pergunta geral
+        if not texto_atual or texto_atual == "O documento gerado aparecerá aqui...":
+            self.status_label.configure(text="Ollama pensando...", text_color=get_color_tuple("warning"))
+            self._show_progress()
+            self.ai_executor.submit(self._process_general_query, msg)
+        else:
+            # Caso contrário, é um refinamento do texto existente
+            self.status_label.configure(text="Ollama pensando...", text_color=get_color_tuple("warning"))
+            self._show_progress()
+            self.ai_executor.submit(self._process_chat, msg, texto_atual)
+
+    def _process_general_query(self, msg: str):
+        """Processa uma pergunta geral do usuário contra o banco de vetores."""
+        res = self.engine.responder_pergunta_geral_com_ia(msg, stream_callback=self._on_stream_update)
+        self.schedule_task(lambda: self._apply_chat_result(res, is_general_query=True))
 
     def _process_chat(self, msg, texto_atual):
         res = self.engine.refinar_texto_com_ia(texto_atual, msg, stream_callback=self._on_stream_update)
-        self.schedule_task(lambda: self._apply_chat_result(res))
+        self.schedule_task(lambda: self._apply_chat_result(res, is_general_query=False))
         
-    def _apply_chat_result(self, res):
+    def _apply_chat_result(self, res: Dict[str, Any], is_general_query: bool = False):
         self._hide_progress()
         if res.get("sucesso"):
             novo_texto = res.get("texto_gerado", "")
             self.text_saida.delete("1.0", tk.END)
             self.text_saida.insert("1.0", novo_texto)
-            self._add_to_chat("IA", "Texto atualizado conforme sua solicitação!")
-            self.status_label.configure(text="Texto refinado!", text_color=get_color_tuple("success"))
             
+            if is_general_query:
+                self._add_to_chat("Ollama", "Resposta enviada para a área de Resultado.")
+                self.status_label.configure(text="Resposta concluída!", text_color=get_color_tuple("success"))
+                resumo_hist = "Pesquisa na base de dados"
+            else:
+                self._add_to_chat("Ollama", "Texto atualizado conforme sua solicitação!")
+                self.status_label.configure(text="Texto refinado!", text_color=get_color_tuple("success"))
+                resumo_hist = "Texto refinado via chat"
+
             self.historico.append({
-                "resumo": "Texto refinado via chat", 
-                "texto": novo_texto, 
+                "resumo": resumo_hist,
+                "texto": novo_texto,
                 "data": datetime.datetime.now().strftime("%d/%m %H:%M")
             })
             self._refresh_historico()
         else:
-            self._show_message("Erro IA", res.get("erro", "Erro desconhecido"), "error")
+            self._show_message("Erro Ollama", res.get("erro", "Erro desconhecido"), "error")
             self.status_label.configure(text="Falha no chat", text_color=get_color_tuple("error"))
 
     def _refresh_historico(self):
@@ -268,14 +283,14 @@ class GeradorSEIApp(ctk.CTk):
         path = filedialog.askdirectory(title="Selecione a pasta do processo")
         if not path: return
         molde_selecionado = getattr(self, "ia_molde_var", tk.StringVar(value="AUTO")).get()
-        self.status_label.configure(text="Analisando IA...", text_color=get_color_tuple("warning"))
+        self.status_label.configure(text="Analisando Ollama...", text_color=get_color_tuple("warning"))
         self._show_progress()
         self.ai_executor.submit(self._process_ia, path, molde_selecionado)
 
     def _process_ia(self, path, molde_selecionado="AUTO"):
         res = self.engine.processar_pasta_com_ia(path, stream_callback=self._on_stream_update, molde_ia=molde_selecionado)
         self.schedule_task(lambda: self._apply_ia_result(res))
-
+        
     def _apply_ia_result(self, res):
         self._hide_progress()
         if res.get("sucesso"):
@@ -287,21 +302,21 @@ class GeradorSEIApp(ctk.CTk):
             self.status_label.configure(text="Análise concluída!", text_color=get_color_tuple("success"))
             
             self.historico.append({
-                "resumo": f"[{tipo_doc}] {res.get('resumo', 'Arquivo analisado pela IA')}", 
+                "resumo": f"[{tipo_doc}] {res.get('resumo', 'Arquivo analisado pelo Ollama')}", 
                 "texto": res.get("texto_gerado", ""), 
                 "data": datetime.datetime.now().strftime("%d/%m %H:%M")
             })
             self._refresh_historico()
         else:
-            self._show_message("Erro IA", res.get("erro", "Erro desconhecido"), "error")
-            self.status_label.configure(text="Falha IA", text_color=get_color_tuple("error"))
+            self._show_message("Erro Ollama", res.get("erro", "Erro desconhecido"), "error")
+            self.status_label.configure(text="Falha Ollama", text_color=get_color_tuple("error"))
 
     def _on_alimentar_ia(self):
         from tkinter import messagebox
-        messagebox.showinfo("Treinar IA", "Selecione a pasta principal.\n\nCada subpasta dentro dela será reconhecida pela IA como um processo diferente.")
+        messagebox.showinfo("Treinar Ollama", "Selecione a pasta principal.\n\nCada subpasta dentro dela será reconhecida pelo Ollama como um processo diferente.")
         path = filedialog.askdirectory(title="Selecione a pasta principal com os processos")
         if not path: return
-        self.status_label.configure(text="Alimentando IA...", text_color=get_color_tuple("warning"))
+        self.status_label.configure(text="Alimentando Ollama...", text_color=get_color_tuple("warning"))
         self._show_progress("determinate")
         self.progress_bar.set(0)
         self.ai_executor.submit(self._process_alimentar_ia, path)
@@ -311,8 +326,8 @@ class GeradorSEIApp(ctk.CTk):
             self.schedule_task(lambda: self.status_label.configure(text=f"Lendo {cur}/{tot}: {f}"))
             self.schedule_task(lambda: self.progress_bar.set(cur / tot if tot > 0 else 0))
         suc, err = self.engine.alimentar_banco_ia_por_pastas(path, cb)
-        self.schedule_task(lambda: self._show_message("IA Alimentada", f"Processos aprendidos: {suc}\nErros: {err}", "success" if suc > 0 else "error"))
-        self.schedule_task(lambda: self.status_label.configure(text="IA Atualizada!", text_color=get_color_tuple("success")))
+        self.schedule_task(lambda: self._show_message("Ollama Alimentado", f"Processos aprendidos: {suc}\nErros: {err}", "success" if suc > 0 else "error"))
+        self.schedule_task(lambda: self.status_label.configure(text="Ollama Atualizada!", text_color=get_color_tuple("success")))
         self.schedule_task(lambda: self._hide_progress())
 
     def _on_copiar_limpar(self):
@@ -324,7 +339,7 @@ class GeradorSEIApp(ctk.CTk):
         self.status_label.configure(text="Copiado e limpo!", text_color=get_color_tuple("success"))
         
         self.thinking_box.delete("1.0", tk.END)
-        self.thinking_box.insert("1.0", "Raciocínio da IA (Deep Thinking) aparecerá aqui...")
+        self.thinking_box.insert("1.0", "Raciocínio do Ollama (Deep Thinking) aparecerá aqui...")
         
         self.chat_history.configure(state="normal")
         self.chat_history.delete("1.0", tk.END)

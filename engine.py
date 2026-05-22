@@ -448,11 +448,11 @@ class SEIEngine:
                     tipo_detectado = "GENERICO"
                     
                 if stream_callback:
-                    stream_callback(f"[Classificação IA: {tipo_detectado}]\nGerando minuta...\n\n")
+                    stream_callback(f"[Classificação Ollama: {tipo_detectado}]\nGerando documento...\n\n")
             else:
                 tipo_detectado = molde_ia
                 if stream_callback:
-                    stream_callback(f"[Molde Selecionado: {tipo_detectado}]\nGerando minuta...\n\n")
+                    stream_callback(f"[Molde Selecionado: {tipo_detectado}]\nGerando documento...\n\n")
 
             # 2. Busca de Exemplos Passados (RAG com ChromaDB)
             contexto_historico = ""
@@ -468,41 +468,54 @@ class SEIEngine:
             # 3. Prompt para o Ollama (IA Local)
             regras_redacao = self._get_regras_redacao()
             
-            molde_ouvidoria = f"Governo do Distrito Federal\nSecretaria Extraordinária de Proteção Animal do Distrito Federal\nGabinete\nAssessoria Especial\n\nDespacho - SEPAN/GAB/ASSESP\n\nBrasília, {data_atual}.\n\nAo Gabinete,\n\nAssunto: Demanda de Ouvidoria. (INSERIR AQUI O ASSUNTO RESUMIDO).\n\n1. Trata-se da reclamação registrada na Ouvidoria sob Ofício nº (INSERIR NUMERO), referente à Manifestação (INSERIR PROTOCOLO), na qual o cidadão (INSERIR RESUMO DA DEMANDA).\n\n2. Sobre o tema, esclarecemos que (INSERIR A RESPOSTA TÉCNICA E A JUSTIFICATIVA DE FORMA FLUIDA).\n\n3. Encaminham-se os autos para conhecimento e adoção de providências.\n\nAtenciosamente,"
+            molde_ouvidoria = f"Governo do Distrito Federal\nSecretaria Extraordinária de Proteção Animal do Distrito Federal\nGabinete\nAssessoria Especial\n\nDespacho - SEPAN/GAB/ASSESP\n\nBrasília, {data_atual}.\n\nAo Gabinete,\n\nAssunto: Demanda de Ouvidoria. (INSERIR AQUI O ASSUNTO RESUMIDO).\n\n1. Trata-se da reclamação registrada na Ouvidoria sob Ofício nº (INSERIR NUMERO), referente à Manifestação (INSERIR PROTOCOLO), na qual o cidadão (INSERIR RESUMO DA DEMANDA).\n\n2. Sobre o tema, esclarece-se que (INSERIR A RESPOSTA TÉCNICA E A JUSTIFICATIVA DE FORMA FLUIDA, COM SUAS PRÓPRIAS PALAVRAS).\n\n3. Encaminham-se os autos para conhecimento e adoção de providências.\n\nAtenciosamente,"
 
             MOLDES_RIGIDOS = {
                 "OUVIDORIA MINUTA": molde_ouvidoria,
                 "OUVIDORIA SUBAN": molde_ouvidoria,
                 "OUVIDORIA": molde_ouvidoria,
-                "DILACAO": f"Governo do Distrito Federal\nSecretaria Extraordinária de Proteção Animal do Distrito Federal\n\nBrasília, {data_atual}.\n\nAssunto: Dilação de Prazo.\n\n1. Trata-se do processo nº (INSERIR NUMERO), referente a (INSERIR TEMA).\n\n2. Solicitamos a dilação de prazo por mais 05 (cinco) dias devido à (INSERIR JUSTIFICATIVA DE COMPLEXIDADE DA DEMANDA).\n\n3. Encaminho os autos para as devidas providências.\n\nAtenciosamente,",
-                "GENERICO": f"Governo do Distrito Federal\nSecretaria Extraordinária de Proteção Animal do Distrito Federal\nGabinete\n\nBrasília, {data_atual}.\n\nAssunto: (INSERIR AQUI O ASSUNTO RESUMIDO).\n\n1. Trata-se de (INSERIR EXPLICACAO DA DEMANDA).\n\n2. Sobre o tema, esclarecemos que (INSERIR A RESPOSTA TECNICA DE FORMA FLUIDA).\n\n3. Encaminho os autos para as devidas providências.\n\nAtenciosamente,"
+                "DILACAO": f"Governo do Distrito Federal\nSecretaria Extraordinária de Proteção Animal do Distrito Federal\n\nBrasília, {data_atual}.\n\nAssunto: Dilação de Prazo.\n\n1. Trata-se do processo nº (INSERIR NUMERO), referente a (INSERIR TEMA).\n\n2. Solicita-se a dilação de prazo por mais 05 (cinco) dias devido à (INSERIR JUSTIFICATIVA DE COMPLEXIDADE DA DEMANDA).\n\n3. Encaminham-se os autos para as devidas providências.\n\nAtenciosamente,",
+                "GENERICO": f"Governo do Distrito Federal\nSecretaria Extraordinária de Proteção Animal do Distrito Federal\nGabinete\n\nBrasília, {data_atual}.\n\nAssunto: (INSERIR AQUI O ASSUNTO RESUMIDO).\n\n1. Trata-se de (INSERIR EXPLICACAO DA DEMANDA).\n\n2. Sobre o tema, esclarece-se que (INSERIR A RESPOSTA TECNICA DE FORMA FLUIDA).\n\n3. Encaminham-se os autos para as devidas providências.\n\nAtenciosamente,"
             }
             molde_escolhido = MOLDES_RIGIDOS.get(tipo_detectado, MOLDES_RIGIDOS["GENERICO"])
             
-            system_prompt = f"""Você é um ASSESSOR DE GABINETE da SEPAN-DF. Redija a MINUTA COMPLETA de um documento oficial.
+            system_prompt = f"""Você é um ASSESSOR DE GABINETE EXTREMAMENTE RIGOROSO e AUTORAL da SEPAN-DF. Sua função é redigir a MINUTA COMPLETA de um documento oficial.
+Você atua como um FILTRO. Você NUNCA repete o que os outros setores escreveram. Você lê, compreende, sintetiza e escreve a sua própria versão dos fatos.
 
-MOLDE OBRIGATÓRIO (SIGA ESTA ESTRUTURA RIGOROSAMENTE):
+MOLDE OBRIGATÓRIO (SIGA ESTA ESTRUTURA RIGOROSAMENTE, INCLUINDO O "Atenciosamente,"):
 {molde_escolhido}
 
-SUA TAREFA (CRÍTICA):
-1. Leia o texto e PREENCHA as áreas indicadas por parênteses (como "(INSERIR AQUI)") com os dados REAIS do processo.
-2. PARÁFRASE E REESCRITA OBRIGATÓRIA (ANTI-CÓPIA): É EXPRESSAMENTE PROIBIDO utilizar sequências de frases ou parágrafos idênticos aos dos documentos da pasta (especialmente despachos da SECEX). Você deve extrair exclusivamente os fatos brutos e REESCREVER a argumentação técnica do zero, alterando a estrutura das sentenças e utilizando sinônimos administrativos. 
-   - Exemplo de reescrita exigida: Em vez de manter "realiza diariamente elevado volume de atendimentos...", altere para "absorve uma expressiva demanda operacional cotidiana...".
-   - Em vez de manter "ocorrem exclusivamente em caráter acadêmico...", altere para "possuem finalidade estritamente educacional sob tutela profissional...".
-   - Em vez de manter "será objeto de acompanhamento no âmbito das ações...", altere para "será incorporado às rotinas de monitoramento e inspeções periódicas...".
-3. ESTRUTURA LIVRE: Você pode criar quantos parágrafos numerados forem necessários (2., 3., 4., etc.) para organizar a argumentação técnica de forma clara e fluida, desde que o texto seja de sua autoria.
-4. ATENÇÃO AO REMETENTE: Você está redigindo pela Assessoria Especial (ASSESP). NÃO copie jargões de outros setores (como SECEX).
-5. REGRA DE IMPESSOALIDADE (CRÍTICA): É terminantemente PROIBIDO utilizar a primeira pessoa do plural na redação (como "esclarecemos", "informamos", "solicitamos", "encaminhamos"). Toda a minuta deve ser redigida de forma estritamente impessoal, adotando a terceira pessoa do singular acompanhada da partícula apassivadora 'se' (exemplos corretos: "esclarece-se que", "informa-se que", "solicita-se a dilação", "encaminha-se o processo").
-6. Pare a geração de texto IMEDIATAMENTE após a palavra "Atenciosamente,".
+SUA TAREFA (CRÍTICA E INEGOCIÁVEL):
+1. Leia o texto e PREENCHA as áreas indicadas por parênteses no molde com os dados REAIS do processo.
+2. PARÁFRASE RADICAL (ANTI-CÓPIA): É ESTRITAMENTE PROIBIDO fazer "copia e cola" do texto do processo. Se você encontrar frases muito longas no original, você DEVE resumi-las com suas próprias palavras. Altere os verbos, os substantivos e a estrutura das frases.
+   - Exemplo de Paráfrase: Ao invés de "o paciente possuía histórico clínico prévio", escreva "nota-se que o animal já apresentava registros de atendimento anteriores".
+3. ESTRUTURA NUMERADA OBRIGATÓRIA: O corpo do texto DEVE ser estritamente em parágrafos numerados (1., 2., 3.). A estrutura do molde é engessada, sua liberdade criativa é apenas na reescrita dos fatos.
+4. ATENÇÃO AO REMETENTE: Você está redigindo pela Assessoria Especial (ASSESP). Nunca copie o tom de voz, jargões ou as conclusões de outros departamentos (como a SECEX, SUBAN, OSC, etc.). O texto deve parecer escrito inteiramente por você.
+5. REGRA DE IMPESSOALIDADE (CRÍTICA): É terminantemente PROIBIDO utilizar a primeira pessoa do plural (como "esclarecemos", "informamos"). A minuta deve ser redigida de forma impessoal (terceira pessoa + 'se'). Ex: "esclarece-se que", "nota-se que", "informa-se que", "encaminha-se".
+6. FINALIZAÇÃO: A geração de texto DEVE acabar IMEDIATAMENTE após a palavra "Atenciosamente,". NUNCA adicione blocos de assinatura, nomes (ex: [SEU NOME]), cargos ou "Assinado por" ao final.
 
 REGRAS DE FORMATAÇÃO:
 {regras_redacao}"""
 
+            user_prompt = f"""Aqui está o documento original com os fatos do processo:
+
+--- INÍCIO DO DOCUMENTO ORIGINAL ---
+{extracted_text}
+--- FIM DO DOCUMENTO ORIGINAL ---
+
+Agora, com base EXCLUSIVAMENTE nos fatos acima, gere a MINUTA COMPLETA preenchendo o MOLDE fornecido nas instruções do sistema.
+Lembre-se:
+1. Resuma e reescreva a justificativa com suas próprias palavras (PARÁFRASE RADICAL).
+2. É expressamente PROIBIDO copiar as frases do texto original.
+3. Mantenha os parágrafos sempre numerados (1., 2., 3.) conforme exigido no molde.
+4. NUNCA use a primeira pessoa (ex: "Encaminhamos"). Use SEMPRE a forma impessoal (ex: "Encaminham-se").
+5. Gere APENAS o documento final. Comece com "Governo do Distrito Federal" e termine na palavra "Atenciosamente,". Não adicione nenhuma assinatura."""
+
             try:
                 resposta = ollama.chat(model='llama3.2', messages=[
                     {'role': 'system', 'content': system_prompt},
-                    {'role': 'user', 'content': f"Preencha rigorosamente o MOLDE OFICIAL com as informações do texto abaixo. Lembre-se de retornar o documento completo.\n\nTexto do processo:\n{extracted_text}"}
-                ], options={'temperature': 0.0}, stream=True)
+                    {'role': 'user', 'content': user_prompt}
+                ], options={'temperature': 0.4, 'top_p': 0.85, 'stop': ['Assinado,', 'Assinatura', '[SEU NOME]', '[Nome]', 'Secretário Executivo']}, stream=True)
             except Exception as e:
                 logger.error(f"Erro de comunicação com Ollama: {e}", exc_info=True)
                 return {"sucesso": False, "erro": f"Erro de comunicação com o modelo no Ollama: {str(e)}. Verifique se o modelo 'llama3.2' está instalado."}
@@ -576,7 +589,64 @@ Retorne APENAS o texto modificado pronto para uso."""
             conteudo_ia_limpo = conteudo_ia.strip()
             return {"sucesso": True, "texto_gerado": conteudo_ia_limpo}
         except Exception as e:
-            logger.error(f"Erro ao refinar texto com IA: {e}", exc_info=True)
+            logger.error(f"Erro ao refinar texto com o Ollama: {e}", exc_info=True)
+            return {"sucesso": False, "erro": str(e)}
+
+    def responder_pergunta_geral_com_ia(self, pergunta: str, stream_callback=None) -> Dict[str, Any]:
+        """Usa o Ollama para responder uma pergunta geral usando o RAG."""
+        ollama_ok, erro_ollama = self._verificar_ollama()
+        if not ollama_ok:
+            return {"sucesso": False, "erro": erro_ollama}
+
+        try:
+            import ollama
+            
+            contexto_historico = ""
+            try:
+                if self._vector_db.count() > 0:
+                    emb = self._get_embedding_ollama(pergunta)
+                    docs_recuperados = self._vector_db.query(emb, n_results=3)
+                    if docs_recuperados:
+                        contexto_historico = "\n\n---\n\n".join(docs_recuperados)
+            except Exception as e:
+                logger.error(f"Aviso Banco de Vetores (RAG falhou na pergunta): {e}", exc_info=True)
+
+            system_prompt = """Você é o Assistente de Inteligência Artificial do SEI. Sua única função aqui é responder perguntas no chat de forma coloquial, como um colega de trabalho conversando no WhatsApp ou Teams.
+
+=== REGRAS DE SOBREVIVÊNCIA (OBRIGATÓRIO) ===
+1. Você é um CHATBOT, não um despachante. Fale de forma natural, usando parágrafos normais e curtos.
+2. É EXPRESSAMENTE PROIBIDO iniciar sua resposta com "Assunto:".
+3. É EXPRESSAMENTE PROIBIDO criar listas numeradas burocráticas (ex: "1. Trata-se...", "2. Sobre o tema...").
+4. É EXPRESSAMENTE PROIBIDO usar palavras como "Encaminho", "Despacho", "À consideração".
+5. Se a mensagem do usuário for só um "oi", "bom dia" ou "tudo bem?", ignore qualquer contexto de processos e seja apenas educado.
+"""
+
+            if contexto_historico:
+                system_prompt += f"""
+=== BASE DE CONHECIMENTO (APENAS PARA CONSULTA) ===
+{contexto_historico}
+
+INSTRUÇÃO: Use a Base de Conhecimento acima para descobrir a resposta da pergunta. Mas ATENÇÃO: Nunca copie a forma como esses textos estão escritos. Leia, entenda e explique para o usuário com suas próprias palavras, num tom de conversa normal.
+"""
+
+            user_prompt = f"Mensagem do Usuário: {pergunta}\n\n[Lembrete de Sistema: Responda obrigatoriamente como se estivesse em um chat de WhatsApp. Sem ofícios, sem 'Assunto:', sem numeração de parágrafos. Apenas texto normal.]"
+
+            resposta = ollama.chat(model='llama3.2', messages=[
+                {'role': 'system', 'content': system_prompt},
+                {'role': 'user', 'content': user_prompt}
+            ], stream=True)
+            
+            conteudo_ia = ""
+            for chunk in resposta:
+                if 'message' in chunk and 'content' in chunk['message']:
+                    conteudo_ia += chunk['message']['content']
+                    if stream_callback:
+                        stream_callback(conteudo_ia)
+                        
+            conteudo_ia_limpo = conteudo_ia.strip()
+            return {"sucesso": True, "texto_gerado": conteudo_ia_limpo}
+        except Exception as e:
+            logger.error(f"Erro ao responder pergunta com o Ollama: {e}", exc_info=True)
             return {"sucesso": False, "erro": str(e)}
 
     def salvar_no_banco_ia(self, texto_despacho: str) -> None:
