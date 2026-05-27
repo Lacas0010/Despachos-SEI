@@ -8,6 +8,7 @@ import json
 import os
 import re
 import zipfile
+import sqlite3
 import logging
 import threading
 import math
@@ -71,6 +72,10 @@ class TinyVectorDB:
             self.data[doc_id] = {"text": text, "embedding": embedding}
             self.save()
             
+    def get_doc(self, doc_id):
+        with self.lock:
+            return self.data.get(doc_id)
+            
     def query(self, query_embedding, n_results=2):
         if not query_embedding:
             return []
@@ -92,6 +97,51 @@ class TinyVectorDB:
         with self.lock:
             return len(self.data)
 
+# Banco de dados SQLite para persistir o histórico de minutas geradas.
+class HistoryDB:
+    def __init__(self, db_path="history.db"):
+        self.db_path = db_path
+        self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
+        self.conn.row_factory = sqlite3.Row
+        self._create_table()
+
+    def _create_table(self):
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp DATETIME DEFAULT (datetime('now', 'localtime')),
+                doc_type TEXT,
+                subject TEXT,
+                full_text TEXT NOT NULL
+            )
+        """)
+        self.conn.commit()
+
+    def add_entry(self, doc_type: str, subject: str, full_text: str) -> int:
+        cursor = self.conn.cursor()
+        agora = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        cursor.execute(
+            "INSERT INTO history (timestamp, doc_type, subject, full_text) VALUES (?, ?, ?, ?)",
+            (agora, doc_type, subject, full_text)
+        )
+        self.conn.commit()
+        return cursor.lastrowid
+
+    def get_all_entries(self, limit: int = 50) -> List[Dict]:
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT * FROM history ORDER BY timestamp DESC LIMIT ?", (limit,))
+        return [dict(row) for row in cursor.fetchall()]
+
+    def search_entries(self, search_term: str, limit: int = 50) -> List[Dict]:
+        cursor = self.conn.cursor()
+        query = "%" + search_term + "%"
+        cursor.execute(
+            "SELECT * FROM history WHERE subject LIKE ? OR full_text LIKE ? ORDER BY timestamp DESC LIMIT ?",
+            (query, query, limit)
+        )
+        return [dict(row) for row in cursor.fetchall()]
+
 # Classe SEIEngine: define comportamento e estrutura desta parte do aplicativo.
 class SEIEngine:
     """Business logic engine for SEI document generation."""
@@ -100,6 +150,7 @@ class SEIEngine:
     def __init__(self, modelos_file: str = "modelos_custom.json"):
         self.modelos_file = modelos_file
         self._vector_db = TinyVectorDB()
+        self.history_db = HistoryDB()
         self.modelos: Dict[str, Any] = {
             "HVeP - Atendimento/HVeP": MODELO_HVEP,
             "Castração de Cães e Gatos": MODELO_CASTRACAO,
@@ -316,6 +367,22 @@ class SEIEngine:
     def get_modelos_list(self) -> List[str]:
         """Get list of available models."""
         return list(self.modelos.keys())
+
+    def save_to_history(self, doc_type: str, subject: str, full_text: str) -> int:
+        """Saves a generated document to the history database."""
+        if not full_text.strip():
+            return -1
+        return self.history_db.add_entry(doc_type, subject, full_text)
+
+    def get_history(self) -> List[Dict]:
+        """Retrieves all entries from the history database."""
+        return self.history_db.get_all_entries()
+
+    def search_history(self, search_term: str) -> List[Dict]:
+        """Searches for entries in the history database."""
+        if not search_term:
+            return self.get_history()
+        return self.history_db.search_entries(search_term)
 
     def calcular_data_prazo(self, dias: int) -> str:
         """Calcula prazo a partir de hoje (dias) e retorna no formato dd/mm/YYYY."""
@@ -734,6 +801,13 @@ INSTRUÇÃO: Use a Base de Conhecimento acima para descobrir a resposta da pergu
                         # Limita texto para evitar OOM e timeout no modelo local de Embeddings
                         texto_processo = texto_processo[:8000]
                         doc_id = hashlib.md5(texto_processo.encode('utf-8')).hexdigest()
+                        
+                        # Verifica cache
+                        doc_cache = self._vector_db.get_doc(doc_id)
+                        if doc_cache and doc_cache.get("text") == texto_processo:
+                            sucesso_count += 1
+                            continue
+                            
                         emb = self._get_embedding_ollama(texto_processo)
                         self._vector_db.upsert(doc_id, texto_processo, emb)
                         sucesso_count += 1

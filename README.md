@@ -20,9 +20,8 @@ Uma aplicação desktop moderna e inteligente para geração, análise e refinam
 
 - **Single-Page Application**: Interface unificada dividida inteligentemente entre Chat da IA, Resultado e Histórico.
 - **Tema Dark/Light**: Alternância suave de tema com persistência de preferências do usuário.
-- **Histórico Visual**: Navegue em cards com as últimas gerações ou refinamentos e reutilize textos passados com um clique.
-- **Copiar para Clipboard**: Ações de um clique para "Copiar e Limpar" ou exportar diretamente para PDF formatado.
-- **Copiar para Clipboard**: Cópia automática com feedback visual
+- **Histórico e Busca**: Navegue em cards de histórico persistentes (banco SQLite local) e filtre despachos rapidamente pela barra de busca.
+- **Ações Rápidas**: Cópia instantânea e nativa para a área de transferência (com animações visuais e feedback) ou exportação direta para PDF.
 
 ## 🚀 Instalação
 
@@ -88,6 +87,7 @@ gerador_sei/
 - `config.json`: Configurações da aplicação (tema ativo, preferências de UI)
 - `vetores_ia.json`: Banco de dados nativo RAG contendo memórias de aprendizado (TinyVectorDB)
 - `modelos_custom.json`: Modelos personalizados criados pelo usuário
+- `history.db`: Banco de dados SQLite contendo o histórico de minutas geradas e pesquisas
 
 ### Formato dos Arquivos JSON
 

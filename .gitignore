@@ -1,33 +1,24 @@
-# Ambientes Virtuais e Dependências Python
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
-.venv/
+
+# Ambientes Virtuais
 venv/
 env/
+.env
+.venv/
 
-# Configurações de IDEs
-.vscode/
-.idea/
-*.swp
-
-# Logs da Aplicação
-*.log
-app_debug.log
-
-# Dados da IA e Configurações Locais
-vetores_ia.json
+# Dados e Configurações Locais da Aplicação
 config.json
-dados_ultimo.json
+vetores_ia.json
 modelos_custom.json
-app_debug.log
+history.db
 
-# Artefatos de Build / Executáveis (PyInstaller)
+# Logs e Saídas
+app_debug.log
+*.pdf
+chroma_db/
 build/
 dist/
-*.spec
-*.exe
-.chroma/
-chroma_db/
 dlls/
-app_debug.log

@@ -68,7 +68,7 @@ class GeradorSEIApp(ctk.CTk):
         self.theme_manager = ThemeManager(self._carregar_config())
         configure_appearance(self.theme_manager.is_dark)
         
-        self.historico = []
+        self.historico: List[Dict[str, Any]] = []
         
         import queue
         self.task_queue = queue.Queue()
@@ -78,6 +78,7 @@ class GeradorSEIApp(ctk.CTk):
         self.ai_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="AI_Worker")
         
         self._build_ui()
+        self._load_history()
         self.protocol("WM_DELETE_WINDOW", self._on_closing)
 
     def _build_ui(self):
@@ -212,6 +213,17 @@ class GeradorSEIApp(ctk.CTk):
             height=35
         ).pack(side="right")
         
+        icon_copy_minuta = self._get_emoji_icon("📋", (20, 20))
+        self.btn_copiar_minuta = ctk.CTkButton(
+            footer, 
+            text=" Copiar Minuta" if icon_copy_minuta else "📋 Copiar Minuta", 
+            image=icon_copy_minuta,
+            compound="left",
+            command=self._on_copiar_minuta, 
+            height=35
+        )
+        self.btn_copiar_minuta.pack(side="right", padx=(10, 10))
+        
         icon_pdf = self._get_emoji_icon("📄", (20, 20))
         ctk.CTkButton(
             footer, 
@@ -227,11 +239,13 @@ class GeradorSEIApp(ctk.CTk):
     def _build_historico(self, parent, col):
         frame = ctk.CTkFrame(parent, fg_color=get_color_tuple("surface"), corner_radius=12)
         frame.grid(row=0, column=col, sticky="nsew", padx=(10, 0))
-        frame.grid_rowconfigure(1, weight=1)
-        frame.grid_columnconfigure(0, weight=1)
         
+        frame.grid_columnconfigure(0, weight=1)
+        frame.grid_rowconfigure(2, weight=1)  # Caixa da lista de histórico
+        frame.grid_rowconfigure(3, weight=2)  # Caixa de visualização do texto
+
         header = ctk.CTkFrame(frame, fg_color="transparent")
-        header.grid(row=0, column=0, sticky="ew", padx=15, pady=15)
+        header.grid(row=0, column=0, sticky="ew", padx=15, pady=(15, 10))
         icon_history = self._get_emoji_icon("📚", (24, 24))
         ctk.CTkLabel(
             header, 
@@ -240,10 +254,43 @@ class GeradorSEIApp(ctk.CTk):
             compound="left",
             font=ctk.CTkFont(size=16, weight="bold")
         ).pack(side="left")
-        ctk.CTkButton(header, text="Alimentar Ollama", command=self._on_alimentar_ia, width=100, height=28, fg_color=get_color_tuple("secondary")).pack(side="right")
         
-        self.historico_scroll = ctk.CTkScrollableFrame(frame, fg_color="transparent")
-        self.historico_scroll.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 10))
+        search_frame = ctk.CTkFrame(frame, fg_color="transparent")
+        search_frame.grid(row=1, column=0, sticky="ew", padx=15, pady=(0, 10))
+        search_frame.grid_columnconfigure(0, weight=1)
+        self.history_search_entry = ctk.CTkEntry(search_frame, placeholder_text="🔍 Buscar no histórico...")
+        self.history_search_entry.grid(row=0, column=0, sticky="ew")
+        self.history_search_entry.bind("<KeyRelease>", self._on_history_search)
+
+        self.historico_scroll = ctk.CTkScrollableFrame(frame, fg_color="transparent", height=160)
+        self.historico_scroll.grid(row=2, column=0, sticky="nsew", padx=10, pady=(0, 10))
+
+        self.history_text_display = ctk.CTkTextbox(frame, font=ctk.CTkFont(size=13, family="Consolas"), wrap="word", state="disabled")
+        self.history_text_display.grid(row=3, column=0, sticky="nsew", padx=15, pady=(0, 10))
+
+        footer = ctk.CTkFrame(frame, fg_color="transparent")
+        footer.grid(row=4, column=0, sticky="ew", padx=15, pady=(0, 15))
+        
+        ctk.CTkButton(
+            footer, 
+            text="Alimentar Ollama", 
+            command=self._on_alimentar_ia, 
+            width=120, 
+            height=35, 
+            fg_color="transparent", 
+            border_width=1
+        ).pack(side="left")
+
+        icon_copy_hist = self._get_emoji_icon("📋", (20, 20))
+        self.btn_copy_history = ctk.CTkButton(
+            footer,
+            text=" Copiar Histórico" if icon_copy_hist else "📋 Copiar Histórico",
+            image=icon_copy_hist,
+            compound="left",
+            command=self._on_copy_history_text,
+            height=35
+        )
+        self.btn_copy_history.pack(side="right")
 
     def _show_progress(self, mode="indeterminate"):
         self.progress_bar.configure(mode=mode)
@@ -255,11 +302,41 @@ class GeradorSEIApp(ctk.CTk):
         self.progress_bar.stop()
         self.progress_bar.pack_forget()
 
+    def destacar_tags_minuta(self, text_widget: ctk.CTkTextbox):
+        """Aplica realce de sintaxe em padrões específicos no texto gerado."""
+        # Configura as tags visualmente
+        text_widget.tag_config("keyword", foreground="#2563EB")
+        text_widget.tag_config("sei_num", foreground="#EA580C", background="#FEF08A")
+        text_widget.tag_config("date_expr", foreground="#059669", underline=True)
+
+        # Remove as tags antigas para evitar sobreposição de formatação
+        for tag in ["keyword", "sei_num", "date_expr"]:
+            text_widget.tag_remove(tag, "1.0", tk.END)
+
+        conteudo = text_widget.get("1.0", tk.END)
+
+        # Mapeamento de padrões usando Regex
+        padroes = {
+            "keyword": r'\b(MINUTA|Despacho|Ao Gabinete)\b',
+            "sei_num": r'\b\d{6,}\b',
+            "date_expr": r'\b\d{1,2}\s+de\s+[a-zA-ZçÇ]+\s+de\s+\d{4}\b'
+        }
+
+        for tag, padrao in padroes.items():
+            flags = re.IGNORECASE if tag == "keyword" else 0
+            for match in re.finditer(padrao, conteudo, flags):
+                text_widget.tag_add(tag, f"1.0 + {match.start()} chars", f"1.0 + {match.end()} chars")
+
     def _add_to_chat(self, role, text):
         self.chat_history.configure(state="normal")
         self.chat_history.insert(tk.END, f"{role}: {text}\n\n")
         self.chat_history.configure(state="disabled")
         self.chat_history.see(tk.END)
+
+    def _load_history(self):
+        """Carrega o histórico do banco de dados e atualiza a UI."""
+        self.historico = self.engine.get_history()
+        self._refresh_historico()
 
     def _on_stream_update(self, full_text):
         def update():
@@ -268,6 +345,7 @@ class GeradorSEIApp(ctk.CTk):
                 self.text_saida.delete("1.0", tk.END)
                 self.text_saida.insert("1.0", output_text)
                 self.text_saida.see(tk.END)
+                self.destacar_tags_minuta(self.text_saida)
         self.schedule_task(update)
 
     def _on_enviar_chat(self):
@@ -302,52 +380,80 @@ class GeradorSEIApp(ctk.CTk):
         self._hide_progress()
         if res.get("sucesso"):
             novo_texto = res.get("texto_gerado", "")
-            self.text_saida.delete("1.0", tk.END)
-            self.text_saida.insert("1.0", novo_texto)
+            if novo_texto:
+                self.text_saida.delete("1.0", tk.END)
+                self.text_saida.insert("1.0", novo_texto)
+                self.destacar_tags_minuta(self.text_saida)
             
             if is_general_query:
                 self._add_to_chat("Ollama", "Resposta enviada para a área de Resultado.")
                 self.status_label.configure(text="Resposta concluída!", text_color=get_color_tuple("success"))
-                resumo_hist = "Pesquisa na base de dados"
+                subject = "Pesquisa na base de dados"
+                doc_type = "Pesquisa"
             else:
                 self._add_to_chat("Ollama", "Texto atualizado conforme sua solicitação!")
                 self.status_label.configure(text="Texto refinado!", text_color=get_color_tuple("success"))
-                resumo_hist = "Texto refinado via chat"
+                subject = "Texto refinado via chat"
+                doc_type = "Refinamento"
 
-            self.historico.append({
-                "resumo": resumo_hist,
-                "texto": novo_texto,
-                "data": datetime.datetime.now().strftime("%d/%m %H:%M")
-            })
-            self._refresh_historico()
+            self.engine.save_to_history(doc_type=doc_type, subject=subject, full_text=novo_texto)
+            self._load_history()
         else:
             self._show_message("Erro Ollama", res.get("erro", "Erro desconhecido"), "error")
             self.status_label.configure(text="Falha no chat", text_color=get_color_tuple("error"))
 
-    def _refresh_historico(self):
+    def _refresh_historico(self, items_to_display: Optional[List[Dict]] = None):
         for widget in self.historico_scroll.winfo_children():
             widget.destroy()
             
-        for item in reversed(self.historico[-10:]):
-            card = ctk.CTkFrame(self.historico_scroll, corner_radius=8, border_width=1)
-            card.pack(fill="x", pady=5)
-            
-            resumo = item.get("resumo", "Documento Gerado")
-            if len(resumo) > 40: resumo = resumo[:37] + "..."
-            ctk.CTkLabel(card, text=resumo, font=ctk.CTkFont(size=12, weight="bold")).pack(anchor="w", padx=10, pady=(5,0))
-            ctk.CTkLabel(card, text=f"{item['data']}", font=ctk.CTkFont(size=10)).pack(anchor="w", padx=10)
-            
-            btn_frame = ctk.CTkFrame(card, fg_color="transparent")
-            btn_frame.pack(fill="x", padx=10, pady=5)
-            ctk.CTkButton(btn_frame, text="Reutilizar", height=24, width=80, command=lambda i=item: self._reutilizar_dados(i)).pack(side="left")
+        items = items_to_display if items_to_display is not None else self.historico
+        
+        for item in items[:50]:
+            card = ctk.CTkFrame(self.historico_scroll, corner_radius=8, border_width=1, fg_color="transparent", cursor="hand2")
+            card.pack(fill="x", pady=4, padx=4)
+            card.bind("<Button-1>", lambda e, i=item: self._on_history_card_click(i))
 
-    def _reutilizar_dados(self, item):
-        dados = item if isinstance(item, dict) else {"texto": item}
+            subject = item.get("subject", "Documento Gerado")
+            if len(subject) > 35: subject = subject[:32] + "..."
             
-        if "texto" in dados:
-            self.text_saida.delete("1.0", tk.END)
-            self.text_saida.insert("1.0", dados["texto"])
-            self._add_to_chat("Sistema", "Texto carregado do histórico.")
+            lbl_subject = ctk.CTkLabel(card, text=subject, font=ctk.CTkFont(size=12, weight="bold"), anchor="w")
+            lbl_subject.pack(fill="x", padx=10, pady=(5,0))
+            lbl_subject.bind("<Button-1>", lambda e, i=item: self._on_history_card_click(i))
+
+            try:
+                dt_obj = datetime.datetime.strptime(item['timestamp'], '%Y-%m-%d %H:%M:%S')
+                date_str = dt_obj.strftime("%d/%m/%y %H:%M")
+            except (ValueError, KeyError):
+                date_str = "Data inválida"
+
+            lbl_date = ctk.CTkLabel(card, text=date_str, font=ctk.CTkFont(size=10), text_color=get_color_tuple("text_secondary"), anchor="w")
+            lbl_date.pack(fill="x", padx=10, pady=(0,5))
+            lbl_date.bind("<Button-1>", lambda e, i=item: self._on_history_card_click(i))
+
+    def _on_history_search(self, event=None):
+        search_term = self.history_search_entry.get().strip()
+        filtered_items = self.engine.search_history(search_term)
+        self._refresh_historico(filtered_items)
+
+    def _on_history_card_click(self, item: Dict[str, Any]):
+        self.history_text_display.configure(state="normal")
+        self.history_text_display.delete("1.0", tk.END)
+        self.history_text_display.insert("1.0", item.get("full_text", "Texto não encontrado."))
+        self.history_text_display.configure(state="disabled")
+
+    def _on_copy_history_text(self):
+        texto = self.history_text_display.get("1.0", tk.END).strip()
+        if not texto: return
+        self.clipboard_clear()
+        self.clipboard_append(texto)
+
+        cor_original = self.btn_copy_history.cget("fg_color")
+        texto_original = self.btn_copy_history.cget("text")
+        icon_original = self.btn_copy_history.cget("image")
+        
+        icon_check = self._get_emoji_icon("✔️", (20, 20))
+        self.btn_copy_history.configure(fg_color=get_color_tuple("success"), text=" Copiado!" if icon_check else "✔️ Copiado!", image=icon_check)
+        self.after(1500, lambda: self.btn_copy_history.configure(fg_color=cor_original, text=texto_original, image=icon_original))
 
     def _on_analisar_pasta(self):
         path = filedialog.askdirectory(title="Selecione a pasta do processo")
@@ -365,25 +471,22 @@ class GeradorSEIApp(ctk.CTk):
         self._hide_progress()
         if res.get("sucesso"):
             tipo_doc = res.get("tipo_documento", "Documento")
-            if "texto_gerado" in res:
+            texto_gerado = res.get("texto_gerado", "")
+            if texto_gerado:
                 self.text_saida.delete("1.0", tk.END)
-                self.text_saida.insert("1.0", res["texto_gerado"])
+                self.text_saida.insert("1.0", texto_gerado)
+                self.destacar_tags_minuta(self.text_saida)
                 self._add_to_chat("Sistema", f"[{tipo_doc}] gerado com sucesso a partir da análise do processo.")
             self.status_label.configure(text="Análise concluída!", text_color=get_color_tuple("success"))
             
-            self.historico.append({
-                "resumo": f"[{tipo_doc}] {res.get('resumo', 'Arquivo analisado pelo Ollama')}", 
-                "texto": res.get("texto_gerado", ""), 
-                "data": datetime.datetime.now().strftime("%d/%m %H:%M")
-            })
-            self._refresh_historico()
+            subject = f"[{tipo_doc}] {res.get('resumo', 'Arquivo analisado pelo Ollama')}"
+            self.engine.save_to_history(doc_type=tipo_doc, subject=subject, full_text=texto_gerado)
+            self._load_history()
         else:
             self._show_message("Erro Ollama", res.get("erro", "Erro desconhecido"), "error")
             self.status_label.configure(text="Falha Ollama", text_color=get_color_tuple("error"))
 
     def _on_alimentar_ia(self):
-        from tkinter import messagebox
-        messagebox.showinfo("Treinar Ollama", "Selecione a pasta principal.\n\nCada subpasta dentro dela será reconhecida pelo Ollama como um processo diferente.")
         path = filedialog.askdirectory(title="Selecione a pasta principal com os processos")
         if not path: return
         self.status_label.configure(text="Alimentando Ollama...", text_color=get_color_tuple("warning"))
@@ -399,6 +502,26 @@ class GeradorSEIApp(ctk.CTk):
         self.schedule_task(lambda: self._show_message("Ollama Alimentado", f"Processos aprendidos: {suc}\nErros: {err}", "success" if suc > 0 else "error"))
         self.schedule_task(lambda: self.status_label.configure(text="Ollama Atualizada!", text_color=get_color_tuple("success")))
         self.schedule_task(lambda: self._hide_progress())
+
+    def _on_copiar_minuta(self):
+        texto = self.text_saida.get("1.0", tk.END).strip()
+        if not texto or "aparecerá aqui..." in texto:
+            return
+            
+        self.clipboard_clear()
+        self.clipboard_append(texto)
+        
+        cor_original = self.btn_copiar_minuta.cget("fg_color")
+        texto_original = self.btn_copiar_minuta.cget("text")
+        icon_original = self.btn_copiar_minuta.cget("image")
+        
+        icon_check = self._get_emoji_icon("✔️", (20, 20))
+        self.btn_copiar_minuta.configure(
+            fg_color=get_color_tuple("success"), 
+            text=" Copiado!" if icon_check else "✔️ Copiado!",
+            image=icon_check
+        )
+        self.after(1500, lambda: self.btn_copiar_minuta.configure(fg_color=cor_original, text=texto_original, image=icon_original))
 
     def _on_copiar_limpar(self):
         texto = self.text_saida.get("1.0", tk.END).strip()
