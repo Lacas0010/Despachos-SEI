@@ -218,7 +218,7 @@ class SEIEngine:
             data=json.dumps({"model": "llama3.2", "prompt": text}).encode('utf-8'),
             headers={'Content-Type': 'application/json', 'Connection': 'close'}
         )
-        with urllib.request.urlopen(req, timeout=120) as response:
+        with urllib.request.urlopen(req, timeout=600) as response:
             res = json.loads(response.read().decode('utf-8'))
             return res.get('embedding', [])
 
@@ -439,10 +439,14 @@ class SEIEngine:
             extracted_text = extracted_text[-8000:] if len(extracted_text) > 8000 else extracted_text
 
             # 1.5 Classificação do Processo (Routing)
-            if molde_ia == "AUTO":
+            if molde_ia == "EXTRAÇÃO":
+                tipo_detectado = "EXTRAÇÃO"
+                if stream_callback:
+                    stream_callback(f"[Modo Selecionado: {tipo_detectado}]\nExtraindo pontos importantes...\n\n")
+            elif molde_ia == "AUTO":
                 prompt_class = f"Analise o texto a seguir e identifique o tipo de processo. Responda APENAS com UMA destas palavras: OUVIDORIA MINUTA, OUVIDORIA SUBAN, DILACAO ou GENERICO.\n\nTexto: {extracted_text[:2000]}"
                 try:
-                    res_class = ollama.chat(model='llama3.2', messages=[{'role': 'user', 'content': prompt_class}], options={'temperature': 0.1})
+                    res_class = ollama.chat(model='gemma4', messages=[{'role': 'user', 'content': prompt_class}], options={'temperature': 0.1})
                     tipo_raw = res_class.get('message', {}).get('content', '').upper()
                     if 'OUVIDORIA MINUTA' in tipo_raw: tipo_detectado = "OUVIDORIA MINUTA"
                     elif 'OUVIDORIA SUBAN' in tipo_raw: tipo_detectado = "OUVIDORIA SUBAN"
@@ -471,25 +475,40 @@ class SEIEngine:
             except Exception as e:
                 logger.error(f"Aviso Banco de Vetores (RAG falhou): {e}", exc_info=True)
             
-            # 3. Prompt para o Ollama (IA Local)
-            regras_redacao = self._get_regras_redacao()
-            
-            molde_ouvidoria = f"Governo do Distrito Federal\nSecretaria Extraordinária de Proteção Animal do Distrito Federal\nGabinete\nAssessoria Especial\n\nDespacho - SEPAN/GAB/ASSESP\n\nBrasília, {data_atual}.\n\nAo Gabinete,\n\nAssunto: Demanda de Ouvidoria. (INSERIR AQUI O ASSUNTO RESUMIDO).\n\n1. Trata-se da reclamação registrada na Ouvidoria sob Ofício nº (INSERIR NUMERO), referente à Manifestação (INSERIR PROTOCOLO), na qual o cidadão (INSERIR RESUMO DA DEMANDA).\n\n2. Sobre o tema, esclarece-se que (INSERIR A RESPOSTA TÉCNICA E A JUSTIFICATIVA DE FORMA FLUIDA, COM SUAS PRÓPRIAS PALAVRAS).\n\n3. Encaminham-se os autos para conhecimento e adoção de providências.\n\nAtenciosamente,"
+            # 3. Definição do Prompt com base no modo (Geração ou Extração)
+            if tipo_detectado == "EXTRAÇÃO":
+                system_prompt = """Você é um analista experiente e minucioso do Governo do Distrito Federal.
+Sua única tarefa é ler o texto integral do processo fornecido e EXTRAIR OS PONTOS MAIS IMPORTANTES, criando um resumo executivo.
 
-            MOLDES_RIGIDOS = {
-                "OUVIDORIA MINUTA": molde_ouvidoria,
-                "OUVIDORIA SUBAN": molde_ouvidoria,
-                "OUVIDORIA": molde_ouvidoria,
-                "DILACAO": f"Governo do Distrito Federal\nSecretaria Extraordinária de Proteção Animal do Distrito Federal\n\nBrasília, {data_atual}.\n\nAssunto: Dilação de Prazo.\n\n1. Trata-se do processo nº (INSERIR NUMERO), referente a (INSERIR TEMA).\n\n2. Solicita-se a dilação de prazo por mais 05 (cinco) dias devido à (INSERIR JUSTIFICATIVA DE COMPLEXIDADE DA DEMANDA).\n\n3. Encaminham-se os autos para as devidas providências.\n\nAtenciosamente,",
-                "GENERICO": f"Governo do Distrito Federal\nSecretaria Extraordinária de Proteção Animal do Distrito Federal\nGabinete\n\nBrasília, {data_atual}.\n\nAssunto: (INSERIR AQUI O ASSUNTO RESUMIDO).\n\n1. Trata-se de (INSERIR EXPLICACAO DA DEMANDA).\n\n2. Sobre o tema, esclarece-se que (INSERIR A RESPOSTA TECNICA DE FORMA FLUIDA).\n\n3. Encaminham-se os autos para as devidas providências.\n\nAtenciosamente,"
-            }
-            molde_escolhido = MOLDES_RIGIDOS.get(tipo_detectado, MOLDES_RIGIDOS["GENERICO"])
-            
-            # Substitui o placeholder do assunto se for uma ouvidoria e o assunto foi encontrado
-            if tipo_detectado == "OUVIDORIA MINUTA" and assunto_extraido:
-                molde_escolhido = molde_escolhido.replace("(INSERIR AQUI O ASSUNTO RESUMIDO)", assunto_extraido)
+Estruture sua resposta EXATAMENTE com os seguintes tópicos (use marcadores/bullet points):
+- ASSUNTO PRINCIPAL:
+- ORIGEM / REQUERENTE:
+- CAUSA DA MANIFESTAÇÃO/OUVIDORIA: (qual foi o problema ou queixa principal?)
+- FATOS RELEVANTES: (resumo prático e objetivo do que aconteceu)
+- PRAZOS / DEMANDAS: (o que estão pedindo e até quando?)
 
-            system_prompt = f"""Você é um ASSESSOR DE GABINETE EXTREMAMENTE RIGOROSO e AUTORAL da SEPAN-DF. Sua função é redigir a MINUTA COMPLETA de um documento oficial.
+Não gere um despacho ou minuta oficial. Apenas extraia os fatos reais encontrados no documento de forma clara e direta."""
+                user_prompt = f"Aqui está o documento original com os fatos do processo:\n\n--- INÍCIO DO DOCUMENTO ---\n{extracted_text}\n--- FIM DO DOCUMENTO ---\n\nCom base exclusivamente no texto acima, extraia os pontos importantes conforme a estrutura solicitada."
+                ia_options = {'temperature': 0.3, 'top_p': 0.85}
+            else:
+                regras_redacao = self._get_regras_redacao()
+                
+                molde_ouvidoria = f"Governo do Distrito Federal\nSecretaria Extraordinária de Proteção Animal do Distrito Federal\nGabinete\nAssessoria Especial\n\nDespacho - SEPAN/GAB/ASSESP\n\nBrasília, {data_atual}.\n\nAo Gabinete,\n\nAssunto: Demanda de Ouvidoria. (INSERIR AQUI O ASSUNTO RESUMIDO).\n\n1. Trata-se da reclamação registrada na Ouvidoria sob Ofício nº (INSERIR NUMERO), referente à Manifestação (INSERIR PROTOCOLO), na qual o cidadão (INSERIR RESUMO DA DEMANDA).\n\n2. Sobre o tema, esclarece-se que (INSERIR A RESPOSTA TÉCNICA E A JUSTIFICATIVA DE FORMA FLUIDA, COM SUAS PRÓPRIAS PALAVRAS).\n\n3. Encaminham-se os autos para conhecimento e adoção de providências.\n\nAtenciosamente,"
+
+                MOLDES_RIGIDOS = {
+                    "OUVIDORIA MINUTA": molde_ouvidoria,
+                    "OUVIDORIA SUBAN": molde_ouvidoria,
+                    "OUVIDORIA": molde_ouvidoria,
+                    "DILACAO": f"Governo do Distrito Federal\nSecretaria Extraordinária de Proteção Animal do Distrito Federal\n\nBrasília, {data_atual}.\n\nAssunto: Dilação de Prazo.\n\n1. Trata-se do processo nº (INSERIR NUMERO), referente a (INSERIR TEMA).\n\n2. Solicita-se a dilação de prazo por mais 05 (cinco) dias devido à (INSERIR JUSTIFICATIVA DE COMPLEXIDADE DA DEMANDA).\n\n3. Encaminham-se os autos para as devidas providências.\n\nAtenciosamente,",
+                    "GENERICO": f"Governo do Distrito Federal\nSecretaria Extraordinária de Proteção Animal do Distrito Federal\nGabinete\n\nBrasília, {data_atual}.\n\nAssunto: (INSERIR AQUI O ASSUNTO RESUMIDO).\n\n1. Trata-se de (INSERIR EXPLICACAO DA DEMANDA).\n\n2. Sobre o tema, esclarece-se que (INSERIR A RESPOSTA TECNICA DE FORMA FLUIDA).\n\n3. Encaminham-se os autos para as devidas providências.\n\nAtenciosamente,"
+                }
+                molde_escolhido = MOLDES_RIGIDOS.get(tipo_detectado, MOLDES_RIGIDOS["GENERICO"])
+                
+                # Substitui o placeholder do assunto se for uma ouvidoria e o assunto foi encontrado
+                if tipo_detectado == "OUVIDORIA MINUTA" and assunto_extraido:
+                    molde_escolhido = molde_escolhido.replace("(INSERIR AQUI O ASSUNTO RESUMIDO)", assunto_extraido)
+
+                system_prompt = f"""Você é um ASSESSOR DE GABINETE EXTREMAMENTE RIGOROSO e AUTORAL da SEPAN-DF. Sua função é redigir a MINUTA COMPLETA de um documento oficial.
 Você atua como um FILTRO. Você NUNCA repete o que os outros setores escreveram. Você lê, compreende, sintetiza e escreve a sua própria versão dos fatos.
 
 MOLDE OBRIGATÓRIO (SIGA ESTA ESTRUTURA RIGOROSAMENTE, INCLUINDO O "Atenciosamente,"):
@@ -507,7 +526,7 @@ SUA TAREFA (CRÍTICA E INEGOCIÁVEL):
 REGRAS DE FORMATAÇÃO:
 {regras_redacao}"""
 
-            user_prompt = f"""Aqui está o documento original com os fatos do processo:
+                user_prompt = f"""Aqui está o documento original com os fatos do processo:
 
 --- INÍCIO DO DOCUMENTO ORIGINAL ---
 {extracted_text}
@@ -520,15 +539,16 @@ Lembre-se:
 3. Mantenha os parágrafos sempre numerados (1., 2., 3.) conforme exigido no molde.
 4. NUNCA use a primeira pessoa (ex: "Encaminhamos"). Use SEMPRE a forma impessoal (ex: "Encaminham-se").
 5. Gere APENAS o documento final. Comece com "Governo do Distrito Federal" e termine na palavra "Atenciosamente,". Não adicione nenhuma assinatura."""
+                ia_options = {'temperature': 0.4, 'top_p': 0.85, 'stop': ['Assinado,', 'Assinatura', '[SEU NOME]', '[Nome]', 'Secretário Executivo']}
 
             try:
-                resposta = ollama.chat(model='llama3.2', messages=[
+                resposta = ollama.chat(model='gemma4', messages=[
                     {'role': 'system', 'content': system_prompt},
                     {'role': 'user', 'content': user_prompt}
-                ], options={'temperature': 0.4, 'top_p': 0.85, 'stop': ['Assinado,', 'Assinatura', '[SEU NOME]', '[Nome]', 'Secretário Executivo']}, stream=True)
+                ], options=ia_options, stream=True)
             except Exception as e:
                 logger.error(f"Erro de comunicação com Ollama: {e}", exc_info=True)
-                return {"sucesso": False, "erro": f"Erro de comunicação com o modelo no Ollama: {str(e)}. Verifique se o modelo 'llama3.2' está instalado."}
+                return {"sucesso": False, "erro": f"Erro de comunicação com o modelo no Ollama: {str(e)}. Verifique se o modelo 'gemma4' está instalado."}
             
             conteudo_ia = ""
             for chunk in resposta:
@@ -541,22 +561,24 @@ Lembre-se:
             conteudo_ia_limpo = conteudo_ia.strip()
             
             # --- GUILHOTINA DE PÓS-PROCESSAMENTO ---
-            # 1. Remove títulos indesejados no topo gerados pela IA
-            conteudo_ia_limpo = re.sub(r'^(?:\*\*MINUTA COMPLETA\*\*|MINUTA COMPLETA|Aqui está a minuta:.*|MOLDE:.*)\s*\n+', '', conteudo_ia_limpo, flags=re.IGNORECASE).strip()
+            if tipo_detectado != "EXTRAÇÃO":
+                # 1. Remove títulos indesejados no topo gerados pela IA
+                conteudo_ia_limpo = re.sub(r'^(?:\*\*MINUTA COMPLETA\*\*|MINUTA COMPLETA|Aqui está a minuta:.*|MOLDE:.*)\s*\n+', '', conteudo_ia_limpo, flags=re.IGNORECASE).strip()
 
-            # 2. Corta absolutamente tudo que vier depois da assinatura
-            match_assinatura = re.search(r'(Atenciosamente,?)', conteudo_ia_limpo, re.IGNORECASE)
-            if match_assinatura:
-                conteudo_ia_limpo = conteudo_ia_limpo[:match_assinatura.end()]
+                # 2. Corta absolutamente tudo que vier depois da assinatura
+                match_assinatura = re.search(r'(Atenciosamente,?)', conteudo_ia_limpo, re.IGNORECASE)
+                if match_assinatura:
+                    conteudo_ia_limpo = conteudo_ia_limpo[:match_assinatura.end()]
             # ---------------------------------------
 
             # Inferir o tipo de documento pelo texto gerado
-            tipo_doc = "Despacho" if "Despacho" in conteudo_ia_limpo[:200] else "Ofício"
+            tipo_doc = "Resumo" if tipo_detectado == "EXTRAÇÃO" else ("Despacho" if "Despacho" in conteudo_ia_limpo[:200] else "Ofício")
+            resumo_texto = "Extração de Pontos Importantes" if tipo_detectado == "EXTRAÇÃO" else "Minuta gerada via IA"
 
             return {
                 "sucesso": True,
                 "tipo_documento": tipo_doc,
-                "resumo": "Minuta gerada via IA",
+                "resumo": resumo_texto,
                 "texto_gerado": conteudo_ia_limpo
             }
         except Exception as e:
@@ -584,7 +606,7 @@ Retorne APENAS o texto modificado pronto para uso."""
 
             prompt_user = f"Texto Atual:\n{texto_atual}\n\nInstrução do que deve ser alterado:\n{instrucao}\n\nReescreva o texto aplicando as alterações solicitadas."
 
-            resposta = ollama.chat(model='llama3.2', messages=[
+            resposta = ollama.chat(model='gemma4', messages=[
                 {'role': 'system', 'content': system_prompt},
                 {'role': 'user', 'content': prompt_user}
             ], stream=True)
@@ -641,7 +663,7 @@ INSTRUÇÃO: Use a Base de Conhecimento acima para descobrir a resposta da pergu
 
             user_prompt = f"Mensagem do Usuário: {pergunta}\n\n[Lembrete de Sistema: Responda obrigatoriamente como se estivesse em um chat de WhatsApp. Sem ofícios, sem 'Assunto:', sem numeração de parágrafos. Apenas texto normal.]"
 
-            resposta = ollama.chat(model='llama3.2', messages=[
+            resposta = ollama.chat(model='gemma4', messages=[
                 {'role': 'system', 'content': system_prompt},
                 {'role': 'user', 'content': user_prompt}
             ], stream=True)

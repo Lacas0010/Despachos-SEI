@@ -12,7 +12,7 @@ import os
 import logging
 from typing import Dict, List, Optional, Any
 import customtkinter as ctk
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 from concurrent.futures import ThreadPoolExecutor
 
 from sei_templates import RESUMO_CRONOGRAMA
@@ -91,7 +91,7 @@ class GeradorSEIApp(ctk.CTk):
         
         ctk.CTkLabel(header, text="Gerador de Despacho SEI (Ollama)", font=ctk.CTkFont(size=20, weight="bold")).pack(side="left", padx=20)
         
-        self.theme_btn = ctk.CTkButton(header, text="☀️" if self.theme_manager.is_dark else "🌙", width=40, command=self._toggle_theme, fg_color="transparent", border_width=1)
+        self.theme_btn = ctk.CTkButton(header, text="Light" if self.theme_manager.is_dark else "Dark", width=40, command=self._toggle_theme, fg_color="transparent", border_width=1)
         self.theme_btn.pack(side="right", padx=20, pady=15)
         
         # Main Layout
@@ -106,22 +106,59 @@ class GeradorSEIApp(ctk.CTk):
         self._build_output(body, 1)
         self._build_historico(body, 2)
 
+    def _get_emoji_icon(self, emoji_char: str, size: tuple = (20, 20)) -> Optional[ctk.CTkImage]:
+        """Gera um ícone colorido em tempo real lendo a fonte COLR/CPAL do Windows."""
+        try:
+            # Cria uma imagem vazia com fundo 100% transparente
+            img = Image.new("RGBA", size, (255, 255, 255, 0))
+            draw = ImageDraw.Draw(img)
+            
+            font_size = int(min(size) * 0.75)
+            try:
+                # Carrega a fonte nativa de Emojis do Windows
+                font = ImageFont.truetype("seguiemj.ttf", font_size)
+            except IOError:
+                font = ImageFont.load_default()
+                
+            # O parâmetro embedded_color=True ativa a renderização do padrão COLR/CPAL
+            draw.text((size[0]/2, size[1]/2), emoji_char, font=font, anchor="mm", embedded_color=True)
+            return ctk.CTkImage(light_image=img, dark_image=img, size=size)
+        except Exception as e:
+            logger.error(f"Erro ao gerar emoji dinâmico {emoji_char}: {e}")
+            return None
+
     def _build_chat_panel(self, parent, col):
         frame = ctk.CTkFrame(parent, fg_color=get_color_tuple("surface"), corner_radius=12)
         frame.grid(row=0, column=col, sticky="nsew", padx=(0, 10))
         frame.grid_rowconfigure(3, weight=1)
         frame.grid_columnconfigure(0, weight=1)
         
-        ctk.CTkLabel(frame, text="🤖 Assistente", font=ctk.CTkFont(size=16, weight="bold")).grid(row=0, column=0, sticky="w", pady=(10, 10), padx=10)
+        icon_robot = self._get_emoji_icon("🤖", (24, 24))
+        ctk.CTkLabel(
+            frame, 
+            text=" Assistente" if icon_robot else "🤖 Assistente", 
+            image=icon_robot,
+            compound="left",
+            font=ctk.CTkFont(size=16, weight="bold")
+        ).grid(row=0, column=0, sticky="w", pady=(10, 10), padx=10)
         
         molde_frame = ctk.CTkFrame(frame, fg_color="transparent")
         molde_frame.grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 10))
         ctk.CTkLabel(molde_frame, text="Molde do Documento:", font=ctk.CTkFont(size=12)).pack(side="left", padx=(0, 5))
         self.ia_molde_var = tk.StringVar(value="AUTO")
-        self.ia_molde_combo = ctk.CTkComboBox(molde_frame, variable=self.ia_molde_var, values=["AUTO", "OUVIDORIA MINUTA", "OUVIDORIA SUBAN", "DILACAO", "GENERICO"], state="readonly", height=28)
+        self.ia_molde_combo = ctk.CTkComboBox(molde_frame, variable=self.ia_molde_var, values=["AUTO", "EXTRAÇÃO", "OUVIDORIA MINUTA", "OUVIDORIA SUBAN", "DILACAO", "GENERICO"], state="readonly", height=28)
         self.ia_molde_combo.pack(side="left", fill="x", expand=True)
         
-        ctk.CTkButton(frame, text="📁 Analisar Processo (Pasta)", command=self._on_analisar_pasta, height=40, font=ctk.CTkFont(weight="bold")).grid(row=2, column=0, sticky="ew", padx=10, pady=(0, 10))
+        icon_folder = self._get_emoji_icon("📁", (20, 20))
+        ctk.CTkButton(
+            frame, 
+            text=" Analisar Processo (Pasta)" if icon_folder else "📁 Analisar Processo (Pasta)", 
+            image=icon_folder,
+            compound="left",
+            command=self._on_analisar_pasta, 
+            height=40, 
+            font=ctk.CTkFont(weight="bold")
+        ).grid(row=2, column=0, sticky="ew", padx=10, pady=(0, 10))
         
         self.chat_history = ctk.CTkTextbox(frame, font=ctk.CTkFont(size=13), wrap="word", state="disabled")
         self.chat_history.grid(row=3, column=0, sticky="nsew", padx=10, pady=(0, 10))
@@ -144,7 +181,14 @@ class GeradorSEIApp(ctk.CTk):
         
         header = ctk.CTkFrame(frame, fg_color="transparent")
         header.grid(row=0, column=0, sticky="ew", padx=15, pady=15)
-        ctk.CTkLabel(header, text="📝 Resultado", font=ctk.CTkFont(size=16, weight="bold")).pack(side="left")
+        icon_result = self._get_emoji_icon("📝", (24, 24))
+        ctk.CTkLabel(
+            header, 
+            text=" Resultado" if icon_result else "📝 Resultado", 
+            image=icon_result,
+            compound="left",
+            font=ctk.CTkFont(size=16, weight="bold")
+        ).pack(side="left")
         
         self.text_saida = ctk.CTkTextbox(frame, font=ctk.CTkFont(size=14, family="Consolas"), wrap="word")
         self.text_saida.grid(row=1, column=0, sticky="nsew", padx=15, pady=(0, 15))
@@ -158,8 +202,27 @@ class GeradorSEIApp(ctk.CTk):
         self.progress_bar = ctk.CTkProgressBar(footer, mode="indeterminate", width=200)
         self.progress_bar.set(0)
         
-        ctk.CTkButton(footer, text="📋 Copiar e Limpar", command=self._on_copiar_limpar, height=35).pack(side="right")
-        ctk.CTkButton(footer, text="📄 PDF", command=self._on_pdf, height=35, fg_color="transparent", border_width=1).pack(side="right", padx=10)
+        icon_copy = self._get_emoji_icon("📋", (20, 20))
+        ctk.CTkButton(
+            footer, 
+            text=" Copiar e Limpar" if icon_copy else "📋 Copiar e Limpar", 
+            image=icon_copy,
+            compound="left",
+            command=self._on_copiar_limpar, 
+            height=35
+        ).pack(side="right")
+        
+        icon_pdf = self._get_emoji_icon("📄", (20, 20))
+        ctk.CTkButton(
+            footer, 
+            text=" PDF" if icon_pdf else "📄 PDF", 
+            image=icon_pdf,
+            compound="left",
+            command=self._on_pdf, 
+            height=35, 
+            fg_color="transparent", 
+            border_width=1
+        ).pack(side="right", padx=10)
 
     def _build_historico(self, parent, col):
         frame = ctk.CTkFrame(parent, fg_color=get_color_tuple("surface"), corner_radius=12)
@@ -169,7 +232,14 @@ class GeradorSEIApp(ctk.CTk):
         
         header = ctk.CTkFrame(frame, fg_color="transparent")
         header.grid(row=0, column=0, sticky="ew", padx=15, pady=15)
-        ctk.CTkLabel(header, text="📚 Histórico", font=ctk.CTkFont(size=16, weight="bold")).pack(side="left")
+        icon_history = self._get_emoji_icon("📚", (24, 24))
+        ctk.CTkLabel(
+            header, 
+            text=" Histórico" if icon_history else "📚 Histórico", 
+            image=icon_history,
+            compound="left",
+            font=ctk.CTkFont(size=16, weight="bold")
+        ).pack(side="left")
         ctk.CTkButton(header, text="Alimentar Ollama", command=self._on_alimentar_ia, width=100, height=28, fg_color=get_color_tuple("secondary")).pack(side="right")
         
         self.historico_scroll = ctk.CTkScrollableFrame(frame, fg_color="transparent")
@@ -356,7 +426,7 @@ class GeradorSEIApp(ctk.CTk):
 
     def _toggle_theme(self):
         self.theme_manager.toggle_theme()
-        self.theme_btn.configure(text="☀️" if self.theme_manager.is_dark else "🌙")
+        self.theme_btn.configure(text="Light" if self.theme_manager.is_dark else "Dark")
         self._salvar_config()
 
     def _show_message(self, title, msg, type="info"):
