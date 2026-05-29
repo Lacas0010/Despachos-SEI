@@ -147,7 +147,7 @@ class GeradorSEIApp(ctk.CTk):
         molde_frame.grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 10))
         ctk.CTkLabel(molde_frame, text="Molde do Documento:", font=ctk.CTkFont(size=12)).pack(side="left", padx=(0, 5))
         self.ia_molde_var = tk.StringVar(value="AUTO")
-        self.ia_molde_combo = ctk.CTkComboBox(molde_frame, variable=self.ia_molde_var, values=["AUTO", "EXTRAÇÃO", "OUVIDORIA MINUTA", "OUVIDORIA SUBAN", "DILACAO", "GENERICO"], state="readonly", height=28)
+        self.ia_molde_combo = ctk.CTkComboBox(molde_frame, variable=self.ia_molde_var, values=["AUTO", "EXTRAÇÃO", "OUVIDORIA MINUTA", "OUVIDORIA SUBAN", "OUVIDORIA ELOGIO", "DILACAO", "GENERICO"], state="readonly", height=28)
         self.ia_molde_combo.pack(side="left", fill="x", expand=True)
         
         icon_folder = self._get_emoji_icon("📁", (20, 20))

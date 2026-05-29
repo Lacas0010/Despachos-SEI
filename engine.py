@@ -436,6 +436,10 @@ class SEIEngine:
         texto = re.sub(r'A autenticidade do documento pode ser conferida.*?código CRC.*?\.', '', texto, flags=re.DOTALL | re.IGNORECASE)
         texto = re.sub(r'"Brasília - Patrimônio Cultural da Humanidade".*?(?=\n\n|$)', '', texto, flags=re.DOTALL | re.IGNORECASE)
         texto = re.sub(r'Doc\. SEI/GDF.*?\n', '', texto, flags=re.IGNORECASE)
+        
+        # Limpeza agressiva de blocos de assinatura eletrônica do SEI que costumam confundir a IA
+        texto = re.sub(r'[^\n]*?em \d{1,2} de [a-zA-ZçÇ]+ de \d{4}, às \d{2}:\d{2}, conforme art.*?publicado no Diário Oficial.*?\d{4}\.', '', texto, flags=re.DOTALL | re.IGNORECASE)
+        texto = re.sub(r'SUJEITO A PRAZO', '', texto, flags=re.IGNORECASE)
 
         return texto.strip()
 
@@ -448,7 +452,7 @@ class SEIEngine:
             "4. Siglas com até 3 letras devem ser totalmente em maiúsculas. Siglas com 4 letras ou mais devem ter apenas a primeira letra maiúscula e as demais minúsculas (ex: Suban, Sepan).\n"
             "5. Datas devem ser SEMPRE escritas por extenso e o local deve ser sempre 'Brasília' (ex: Brasília, 14 de maio de 2026, e nunca 'Brasil, 14/05/2026').\n"
             "6. A abreviação de número para processos deve ser com \"n\" minúsculo (ex: processo nº).\n"
-            "7. Todo documento oficial do GDF deve ter seus parágrafos numerados em ordem crescente (ex: 1. Trata-se de..., 2. Sobre o tema..., 3. Encaminho...).\n"
+            "7. Todo documento oficial do GDF deve ter seus parágrafos numerados em ordem crescente (ex: 1. Trata-se de..., 2. Sobre o tema..., 3. Encaminho...). Nas minutas de ouvidoria, o despacho inicial ('Encaminha-se...') não é numerado, mas o corpo da MINUTA sim.\n"
             "8. É OBRIGATÓRIO incluir a linha 'Assunto:' no topo do documento logo após o cabeçalho e a data.\n"
             "9. Se o processo for de Ouvidoria, adicione logo abaixo do despacho a palavra 'MINUTA' centralizada, seguida da sugestão de resposta formal direcionada ao Ouvidor (Senhor Ouvidor...).\n"
             "10. É ESTRITAMENTE PROIBIDO gerar rodapés de assinatura eletrônica, linhas em branco para assinar (_______) ou blocos de autenticidade. O documento deve terminar imediatamente no parágrafo de encaminhamento ou na palavra 'Atenciosamente'.\n"
@@ -511,11 +515,12 @@ class SEIEngine:
                 if stream_callback:
                     stream_callback(f"[Modo Selecionado: {tipo_detectado}]\nExtraindo pontos importantes...\n\n")
             elif molde_ia == "AUTO":
-                prompt_class = f"Analise o texto a seguir e identifique o tipo de processo. Responda APENAS com UMA destas palavras: OUVIDORIA MINUTA, OUVIDORIA SUBAN, DILACAO ou GENERICO.\n\nTexto: {extracted_text[:2000]}"
+                prompt_class = f"Analise o texto a seguir e identifique o tipo de processo. Responda APENAS com UMA destas palavras: OUVIDORIA MINUTA, OUVIDORIA SUBAN, OUVIDORIA ELOGIO, DILACAO ou GENERICO.\n\nTexto: {extracted_text[:2000]}"
                 try:
                     res_class = ollama.chat(model='gemma4', messages=[{'role': 'user', 'content': prompt_class}], options={'temperature': 0.1})
                     tipo_raw = res_class.get('message', {}).get('content', '').upper()
-                    if 'OUVIDORIA MINUTA' in tipo_raw: tipo_detectado = "OUVIDORIA MINUTA"
+                    if 'OUVIDORIA ELOGIO' in tipo_raw: tipo_detectado = "OUVIDORIA ELOGIO"
+                    elif 'OUVIDORIA MINUTA' in tipo_raw: tipo_detectado = "OUVIDORIA MINUTA"
                     elif 'OUVIDORIA SUBAN' in tipo_raw: tipo_detectado = "OUVIDORIA SUBAN"
                     elif 'OUVIDORIA' in tipo_raw: tipo_detectado = "OUVIDORIA MINUTA"
                     elif 'DILACAO' in tipo_raw or 'DILAÇÃO' in tipo_raw: tipo_detectado = "DILACAO"
@@ -560,11 +565,86 @@ Não gere um despacho ou minuta oficial. Apenas extraia os fatos reais encontrad
             else:
                 regras_redacao = self._get_regras_redacao()
                 
-                molde_ouvidoria = f"Governo do Distrito Federal\nSecretaria Extraordinária de Proteção Animal do Distrito Federal\nGabinete\nAssessoria Especial\n\nDespacho - SEPAN/GAB/ASSESP\n\nBrasília, {data_atual}.\n\nAo Gabinete,\n\nAssunto: Demanda de Ouvidoria. (INSERIR AQUI O ASSUNTO RESUMIDO).\n\n1. Trata-se da reclamação registrada na Ouvidoria sob Ofício nº (INSERIR NUMERO), referente à Manifestação (INSERIR PROTOCOLO), na qual o cidadão (INSERIR RESUMO DA DEMANDA).\n\n2. Sobre o tema, esclarece-se que (INSERIR A RESPOSTA TÉCNICA E A JUSTIFICATIVA DE FORMA FLUIDA, COM SUAS PRÓPRIAS PALAVRAS).\n\n3. Encaminham-se os autos para conhecimento e adoção de providências.\n\nAtenciosamente,"
+                molde_ouvidoria = f"""Governo do Distrito Federal
+Secretaria Extraordinária de Proteção Animal do Distrito Federal
+Gabinete
+Assessoria Especial
+
+Despacho - SEPAN/GAB/ASSESP
+
+Brasília, {data_atual}.
+
+Ao Gabinete,
+
+Assunto: Demanda de Ouvidoria. (INSERIR AQUI O ASSUNTO RESUMIDO).
+
+Encaminha-se, para apreciação desse Gabinete, minuta de resposta à Ouvidoria da Casa Civil do Distrito Federal, referente à demanda registrada sob o Ofício nº (INSERIR NUMERO DO OFICIO) - CACI/GAB/OUVIDORIA ((INSERIR NUMERO SEI DO OFICIO)), na qual o(a) cidadão(ã) relata (INSERIR RESUMO DA DEMANDA), conforme especifica na Manifestação ((INSERIR NUMERO SEI DA MANIFESTACAO)), vinculada ao Protocolo (INSERIR PROTOCOLO).
+
+MINUTA
+
+Ao Senhor
+Sérgio Gaze de Moura
+Ouvidor
+Casa Civil do Distrito Federal
+
+Assunto: Demanda de Ouvidoria. (INSERIR AQUI O ASSUNTO RESUMIDO).
+
+Senhor Ouvidor,
+
+1. Trata-se de reclamação registrada na Ouvidoria do Governo do Distrito Federal, sob Ofício nº (INSERIR NUMERO DO OFICIO) - CACI/GAB/OUVIDORIA ((INSERIR NUMERO SEI DO OFICIO)), referente à Manifestação registrada sob o Protocolo (INSERIR PROTOCOLO) ((INSERIR NUMERO SEI DA MANIFESTACAO)), na qual o(a) cidadão(ã) relata (INSERIR RESUMO DA DEMANDA).
+
+2. Sobre o tema, esclarece-se que (INSERIR A RESPOSTA TÉCNICA E A JUSTIFICATIVA DE FORMA FLUIDA, COM SUAS PRÓPRIAS PALAVRAS).
+
+3. (INSERIR PARÁGRAFOS ADICIONAIS SE HOUVER MAIS DETALHES RELEVANTES, CONTINUANDO A NUMERAÇÃO).
+
+4. Assim, considerando-se prestadas as informações necessárias ao atendimento da demanda, encaminham-se os autos para conhecimento e providências quanto a resposta ao demandante.
+
+Atenciosamente,"""
+
+                molde_ouvidoria_suban = f"""Governo do Distrito Federal
+Secretaria Extraordinária de Proteção Animal do Distrito Federal
+Gabinete
+Assessoria Especial
+
+Despacho - SEPAN/GAB/ASSESP
+
+Brasília, {data_atual}.
+
+À Subsecretaria de Bem-estar Animal (Suban),
+
+Assunto: Demanda de Ouvidoria. (INSERIR AQUI O ASSUNTO RESUMIDO).
+
+SUJEITO A PRAZO
+
+Trata-se do Ofício nº (INSERIR NUMERO DO OFICIO) - CACI/GAB/OUVIDORIA ((INSERIR NUMERO SEI DO OFICIO)) por meio do qual a Ouvidoria da Casa Civil do Distrito Federal solicita providências quanto às (INSERIR RESUMO DA DEMANDA), conforme especifica na Manifestação ((INSERIR NUMERO SEI DA MANIFESTACAO)), referente ao Protocolo: (INSERIR PROTOCOLO).
+
+Encaminham-se os autos para conhecimento e providências, com a brevidade que o assunto requer, considerando que o prazo de resposta a Secretaria Executiva é, impreterivelmente, (INSERIR PRAZO), conforme Art. 5º, da LEI Nº 4.896, DE 31 DE JULHO DE 2012.
+
+Atenciosamente,"""
+
+                molde_ouvidoria_elogio = f"""Governo do Distrito Federal
+Secretaria Extraordinária de Proteção Animal do Distrito Federal
+Gabinete
+Assessoria Especial
+
+Despacho - SEPAN/GAB/ASSESP
+
+Brasília, {data_atual}.
+
+À Subsecretaria de Bem-estar Animal (Suban),
+
+Assunto: Demanda de Ouvidoria. (INSERIR AQUI O ASSUNTO RESUMIDO).
+
+Trata-se do Ofício nº (INSERIR NUMERO DO OFICIO) - CACI/GAB/OUVIDORIA ((INSERIR NUMERO SEI DO OFICIO)) por meio do qual a Ouvidoria da Casa Civil do Distrito Federal solicita providências quanto a (INSERIR RESUMO DA DEMANDA, EX: elogio recebido a servidores), conforme especifica na(s) Manifestação(ões) ((INSERIR NUMERO SEI DA MANIFESTACAO)), referente(s) ao(s) Protocolo(s): (INSERIR PROTOCOLO).
+
+Encaminham-se os autos para conhecimento e providências consideradas cabíveis.
+
+Atenciosamente,"""
 
                 MOLDES_RIGIDOS = {
                     "OUVIDORIA MINUTA": molde_ouvidoria,
-                    "OUVIDORIA SUBAN": molde_ouvidoria,
+                    "OUVIDORIA SUBAN": molde_ouvidoria_suban,
+                    "OUVIDORIA ELOGIO": molde_ouvidoria_elogio,
                     "OUVIDORIA": molde_ouvidoria,
                     "DILACAO": f"Governo do Distrito Federal\nSecretaria Extraordinária de Proteção Animal do Distrito Federal\n\nBrasília, {data_atual}.\n\nAssunto: Dilação de Prazo.\n\n1. Trata-se do processo nº (INSERIR NUMERO), referente a (INSERIR TEMA).\n\n2. Solicita-se a dilação de prazo por mais 05 (cinco) dias devido à (INSERIR JUSTIFICATIVA DE COMPLEXIDADE DA DEMANDA).\n\n3. Encaminham-se os autos para as devidas providências.\n\nAtenciosamente,",
                     "GENERICO": f"Governo do Distrito Federal\nSecretaria Extraordinária de Proteção Animal do Distrito Federal\nGabinete\n\nBrasília, {data_atual}.\n\nAssunto: (INSERIR AQUI O ASSUNTO RESUMIDO).\n\n1. Trata-se de (INSERIR EXPLICACAO DA DEMANDA).\n\n2. Sobre o tema, esclarece-se que (INSERIR A RESPOSTA TECNICA DE FORMA FLUIDA).\n\n3. Encaminham-se os autos para as devidas providências.\n\nAtenciosamente,"
@@ -572,23 +652,25 @@ Não gere um despacho ou minuta oficial. Apenas extraia os fatos reais encontrad
                 molde_escolhido = MOLDES_RIGIDOS.get(tipo_detectado, MOLDES_RIGIDOS["GENERICO"])
                 
                 # Substitui o placeholder do assunto se for uma ouvidoria e o assunto foi encontrado
-                if tipo_detectado == "OUVIDORIA MINUTA" and assunto_extraido:
-                    molde_escolhido = molde_escolhido.replace("(INSERIR AQUI O ASSUNTO RESUMIDO)", assunto_extraido)
+                if tipo_detectado in ("OUVIDORIA MINUTA", "OUVIDORIA SUBAN", "OUVIDORIA ELOGIO", "OUVIDORIA") and assunto_extraido:
+                    # Remove o prefixo "Demanda de Ouvidoria" do assunto para evitar duplicação
+                    ass_limpo = re.sub(r'^Demanda de Ouvidoria[\.\-\:]?\s*', '', assunto_extraido, flags=re.IGNORECASE).strip()
+                    if ass_limpo:
+                        molde_escolhido = molde_escolhido.replace("(INSERIR AQUI O ASSUNTO RESUMIDO)", ass_limpo)
 
                 system_prompt = f"""Você é um ASSESSOR DE GABINETE EXTREMAMENTE RIGOROSO e AUTORAL da SEPAN-DF. Sua função é redigir a MINUTA COMPLETA de um documento oficial.
 Você atua como um FILTRO. Você NUNCA repete o que os outros setores escreveram. Você lê, compreende, sintetiza e escreve a sua própria versão dos fatos.
 
-MOLDE OBRIGATÓRIO (SIGA ESTA ESTRUTURA RIGOROSAMENTE, INCLUINDO O "Atenciosamente,"):
+MOLDE OBRIGATÓRIO (SIGA ESTA ESTRUTURA RIGOROSAMENTE. NÃO ADICIONE NEM REMOVA PARÁGRAFOS DO MOLDE):
 {molde_escolhido}
 
 SUA TAREFA (CRÍTICA E INEGOCIÁVEL):
-1. Leia o texto e PREENCHA as áreas indicadas por parênteses no molde com os dados REAIS do processo.
-2. PARÁFRASE RADICAL (ANTI-CÓPIA): É ESTRITAMENTE PROIBIDO fazer "copia e cola" do texto do processo. Se você encontrar frases muito longas no original, você DEVE resumi-las com suas próprias palavras. Altere os verbos, os substantivos e a estrutura das frases.
-   - Exemplo de Paráfrase: Ao invés de "o paciente possuía histórico clínico prévio", escreva "nota-se que o animal já apresentava registros de atendimento anteriores".
-3. ESTRUTURA NUMERADA OBRIGATÓRIA: O corpo do texto DEVE ser estritamente em parágrafos numerados (1., 2., 3.). A estrutura do molde é engessada, sua liberdade criativa é apenas na reescrita dos fatos.
-4. ATENÇÃO AO REMETENTE: Você está redigindo pela Assessoria Especial (ASSESP). Nunca copie o tom de voz, jargões ou as conclusões de outros departamentos (como a SECEX, SUBAN, OSC, etc.). O texto deve parecer escrito inteiramente por você.
-5. REGRA DE IMPESSOALIDADE (CRÍTICA): É terminantemente PROIBIDO utilizar a primeira pessoa do plural (como "esclarecemos", "informamos"). A minuta deve ser redigida de forma impessoal (terceira pessoa + 'se'). Ex: "esclarece-se que", "nota-se que", "informa-se que", "encaminha-se".
-6. FINALIZAÇÃO: A geração de texto DEVE acabar IMEDIATAMENTE após a palavra "Atenciosamente,". NUNCA adicione blocos de assinatura, nomes (ex: [SEU NOME]), cargos ou "Assinado por" ao final.
+1. Leia o texto original e PREENCHA APENAS as áreas indicadas por parênteses no molde com os dados REAIS do processo.
+2. PARÁFRASE RADICAL: É ESTRITAMENTE PROIBIDO "copiar e colar" os despachos de encaminhamento anteriores (ex: não copie "Trata-se do Ofício... solicita providências..."). Reescreva os fatos com suas próprias palavras.
+3. ESTRUTURA RIGOROSA: Reproduza o MOLDE EXATAMENTE como ele é. NÃO invente novos despachos no meio do texto. NÃO insira parágrafos copiados antes de "Encaminha-se" ou antes de "Senhor Ouvidor,". Você só tem permissão para preencher o que está entre parênteses (INSERIR...).
+4. ATENÇÃO AO REMETENTE: Você está redigindo pela Assessoria Especial (ASSESP). O texto deve parecer escrito inteiramente por você.
+5. REGRA DE IMPESSOALIDADE: É terminantemente PROIBIDO utilizar a primeira pessoa (como "encaminho", "esclarecemos"). A minuta deve ser redigida de forma impessoal (ex: "encaminha-se", "esclarece-se").
+6. FINALIZAÇÃO: A geração de texto DEVE acabar IMEDIATAMENTE após a palavra "Atenciosamente,". NUNCA adicione blocos de assinatura ou decretos ao final.
 
 REGRAS DE FORMATAÇÃO:
 {regras_redacao}"""
@@ -602,10 +684,9 @@ REGRAS DE FORMATAÇÃO:
 Agora, com base EXCLUSIVAMENTE nos fatos acima, gere a MINUTA COMPLETA preenchendo o MOLDE fornecido nas instruções do sistema.
 Lembre-se:
 1. Resuma e reescreva a justificativa com suas próprias palavras (PARÁFRASE RADICAL).
-2. É expressamente PROIBIDO copiar as frases do texto original.
-3. Mantenha os parágrafos sempre numerados (1., 2., 3.) conforme exigido no molde.
-4. NUNCA use a primeira pessoa (ex: "Encaminhamos"). Use SEMPRE a forma impessoal (ex: "Encaminham-se").
-5. Gere APENAS o documento final. Comece com "Governo do Distrito Federal" e termine na palavra "Atenciosamente,". Não adicione nenhuma assinatura."""
+2. PREENCHA RIGOROSAMENTE O MOLDE. É expressamente PROIBIDO colar trechos soltos do processo (como ofícios antigos) fora dos lugares indicados.
+3. NUNCA use a primeira pessoa (ex: "Encaminho"). Use SEMPRE a forma impessoal (ex: "Encaminham-se").
+4. Gere APENAS o documento final seguindo o molde exato. Comece com "Governo do Distrito Federal" e termine na palavra "Atenciosamente,"."""
                 ia_options = {'temperature': 0.4, 'top_p': 0.85, 'stop': ['Assinado,', 'Assinatura', '[SEU NOME]', '[Nome]', 'Secretário Executivo']}
 
             try:
