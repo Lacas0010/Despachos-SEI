@@ -397,6 +397,7 @@ class SEIEngine:
         try:
             if ext.endswith('.pdf'):
                 try:
+                    # pyrefly: ignore [missing-import]
                     import fitz
                     with fitz.open(filepath) as doc:
                         for page in doc:
@@ -410,6 +411,7 @@ class SEIEngine:
                     texto = f.read()
             elif ext.endswith(('.html', '.htm')):
                 try:
+                    # pyrefly: ignore [missing-import]
                     from bs4 import BeautifulSoup
                     with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
                         soup = BeautifulSoup(f.read(), 'html.parser')
@@ -424,6 +426,7 @@ class SEIEngine:
                         texto = re.sub(r'\s+', ' ', texto).strip()
             elif ext.endswith('.docx'):
                 try:
+                    # pyrefly: ignore [missing-import]
                     import docx
                     document = docx.Document(filepath)
                     texto = "\n".join([para.text for para in document.paragraphs])
@@ -457,7 +460,8 @@ class SEIEngine:
             "9. Se o processo for de Ouvidoria, adicione logo abaixo do despacho a palavra 'MINUTA' centralizada, seguida da sugestão de resposta formal direcionada ao Ouvidor (Senhor Ouvidor...).\n"
             "10. É ESTRITAMENTE PROIBIDO gerar rodapés de assinatura eletrônica, linhas em branco para assinar (_______) ou blocos de autenticidade. O documento deve terminar imediatamente no parágrafo de encaminhamento ou na palavra 'Atenciosamente'.\n"
             "11. No caso de circulares (memorando ou ofício), siga sempre a ordem alfabética das unidades/pastas.\n"
-            "12. Ao se basear em exemplos anteriores (ex: da Secex), faça as adequações necessárias na minuta (evite cópia integral sem revisão), lembrando sempre que quem assinará o documento será o Secretário."
+            "12. Ao se basear em exemplos anteriores (ex: da Secex), faça as adequações necessárias na minuta (evite cópia integral sem revisão), lembrando sempre que quem assinará o documento será o Secretário.\n"
+            "13. O termo correto é 'Serviço Veterinário Público' e NUNCA 'Hospital Veterinário Público'. A sigla, porém, continua sendo 'HVeP'."
         )
         try:
             if os.path.exists("config.json"):
@@ -485,6 +489,7 @@ class SEIEngine:
         extracted_text = ""
         try:
             try:
+                # pyrefly: ignore [missing-import]
                 import ollama
             except ImportError as e:
                 return {"sucesso": False, "erro": f"Erro de dependência ({str(e)}). Execute 'pip install ollama' no terminal."}
@@ -708,6 +713,13 @@ Lembre-se:
             # Mantém o texto gerado (incluindo raciocínio) como texto livre
             conteudo_ia_limpo = conteudo_ia.strip()
             
+            # --- REMOÇÃO DO DEEP THINKING PARA O HISTÓRICO/RESULTADO ---
+            match_think = re.search(r'<think>.*?</think>', conteudo_ia_limpo, flags=re.DOTALL)
+            if match_think:
+                conteudo_ia_limpo = conteudo_ia_limpo.replace(match_think.group(0), "").strip()
+            elif "<think>" in conteudo_ia_limpo:
+                conteudo_ia_limpo = re.sub(r'<think>.*', '', conteudo_ia_limpo, flags=re.DOTALL).strip()
+
             # --- GUILHOTINA DE PÓS-PROCESSAMENTO ---
             if tipo_detectado != "EXTRAÇÃO":
                 # 1. Remove títulos indesejados no topo gerados pela IA
@@ -740,6 +752,7 @@ Lembre-se:
             return {"sucesso": False, "erro": erro_ollama}
 
         try:
+            # pyrefly: ignore [missing-import]
             import ollama
             
             regras_redacao = self._get_regras_redacao()
@@ -767,6 +780,13 @@ Retorne APENAS o texto modificado pronto para uso."""
                         stream_callback(conteudo_ia)
                         
             conteudo_ia_limpo = conteudo_ia.strip()
+            
+            match_think = re.search(r'<think>.*?</think>', conteudo_ia_limpo, flags=re.DOTALL)
+            if match_think:
+                conteudo_ia_limpo = conteudo_ia_limpo.replace(match_think.group(0), "").strip()
+            elif "<think>" in conteudo_ia_limpo:
+                conteudo_ia_limpo = re.sub(r'<think>.*', '', conteudo_ia_limpo, flags=re.DOTALL).strip()
+                
             return {"sucesso": True, "texto_gerado": conteudo_ia_limpo}
         except Exception as e:
             logger.error(f"Erro ao refinar texto com o Ollama: {e}", exc_info=True)
@@ -779,6 +799,7 @@ Retorne APENAS o texto modificado pronto para uso."""
             return {"sucesso": False, "erro": erro_ollama}
 
         try:
+            # pyrefly: ignore [missing-import]
             import ollama
             
             contexto_historico = ""
@@ -824,6 +845,13 @@ INSTRUÇÃO: Use a Base de Conhecimento acima para descobrir a resposta da pergu
                         stream_callback(conteudo_ia)
                         
             conteudo_ia_limpo = conteudo_ia.strip()
+            
+            match_think = re.search(r'<think>.*?</think>', conteudo_ia_limpo, flags=re.DOTALL)
+            if match_think:
+                conteudo_ia_limpo = conteudo_ia_limpo.replace(match_think.group(0), "").strip()
+            elif "<think>" in conteudo_ia_limpo:
+                conteudo_ia_limpo = re.sub(r'<think>.*', '', conteudo_ia_limpo, flags=re.DOTALL).strip()
+
             return {"sucesso": True, "texto_gerado": conteudo_ia_limpo}
         except Exception as e:
             logger.error(f"Erro ao responder pergunta com o Ollama: {e}", exc_info=True)

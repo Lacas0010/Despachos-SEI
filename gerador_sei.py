@@ -193,7 +193,7 @@ class GeradorSEIApp(ctk.CTk):
         
         self.text_saida = ctk.CTkTextbox(frame, font=ctk.CTkFont(size=14, family="Consolas"), wrap="word")
         self.text_saida.grid(row=1, column=0, sticky="nsew", padx=15, pady=(0, 15))
-        self.text_saida.insert("1.0", "O documento a do aparecerá aqui...")
+        self.text_saida.insert("1.0", "O documento gerado aparecerá aqui...")
         
         footer = ctk.CTkFrame(frame, fg_color="transparent")
         footer.grid(row=2, column=0, sticky="ew", padx=15, pady=(0, 15))
@@ -342,10 +342,20 @@ class GeradorSEIApp(ctk.CTk):
         def update():
             output_text = full_text.strip()
             if output_text:
-                self.text_saida.delete("1.0", tk.END)
-                self.text_saida.insert("1.0", output_text)
-                self.text_saida.see(tk.END)
-                self.destacar_tags_minuta(self.text_saida)
+                final_text = output_text
+                
+                if "<think>" in output_text:
+                    if "</think>" in output_text:
+                        parts = output_text.split("</think>", 1)
+                        final_text = parts[1].strip()
+                    else:
+                        final_text = ""
+                
+                if final_text:
+                    self.text_saida.delete("1.0", tk.END)
+                    self.text_saida.insert("1.0", final_text)
+                    self.text_saida.see(tk.END)
+                    self.destacar_tags_minuta(self.text_saida)
         self.schedule_task(update)
 
     def _on_enviar_chat(self):
@@ -531,9 +541,6 @@ class GeradorSEIApp(ctk.CTk):
         self.text_saida.delete("1.0", tk.END)
         self.status_label.configure(text="Copiado e limpo!", text_color=get_color_tuple("success"))
         
-        self.thinking_box.delete("1.0", tk.END)
-        self.thinking_box.insert("1.0", "Raciocínio do Ollama (Deep Thinking) aparecerá aqui...")
-        
         self.chat_history.configure(state="normal")
         self.chat_history.delete("1.0", tk.END)
         self.chat_history.configure(state="disabled")
@@ -553,6 +560,7 @@ class GeradorSEIApp(ctk.CTk):
         self._salvar_config()
 
     def _show_message(self, title, msg, type="info"):
+        # pyrefly: ignore [missing-import]
         from CTkMessagebox import CTkMessagebox
         icon_name = "cancel" if type == "error" else ("check" if type == "success" else type)
         CTkMessagebox(title=title, message=msg, icon=icon_name)
