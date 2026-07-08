@@ -1,4 +1,4 @@
-﻿"""
+"""
 Gerador SEI - Main Application
 Modern interface for SEI document generation
 """
@@ -82,30 +82,34 @@ class GeradorSEIApp(ctk.CTk):
         self.protocol("WM_DELETE_WINDOW", self._on_closing)
 
     def _build_ui(self):
-        self.grid_rowconfigure(1, weight=1)
+        self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1)
         
-        # Header
-        header = ctk.CTkFrame(self, height=60, corner_radius=0, fg_color=get_color_tuple("surface"))
-        header.grid(row=0, column=0, sticky="ew")
-        header.grid_propagate(False)
-        
-        ctk.CTkLabel(header, text="Gerador de Despacho SEI (Ollama)", font=ctk.CTkFont(size=20, weight="bold")).pack(side="left", padx=20)
-        
-        self.theme_btn = ctk.CTkButton(header, text="Light" if self.theme_manager.is_dark else "Dark", width=40, command=self._toggle_theme, fg_color="transparent", border_width=1)
-        self.theme_btn.pack(side="right", padx=20, pady=15)
-        
-        # Main Layout
+        # Main Layout (2 Columns)
         body = ctk.CTkFrame(self, fg_color="transparent")
-        body.grid(row=1, column=0, sticky="nsew", padx=20, pady=20)
+        body.grid(row=0, column=0, sticky="nsew", padx=20, pady=20)
         body.grid_rowconfigure(0, weight=1)
-        body.grid_columnconfigure(0, weight=0, minsize=350)
-        body.grid_columnconfigure(1, weight=1)
-        body.grid_columnconfigure(2, weight=0, minsize=380)
         
-        self._build_chat_panel(body, 0)
+        # Coluna 0: Sidebar (Tabview)
+        body.grid_columnconfigure(0, weight=0, minsize=350)
+        # Coluna 1: Main Area
+        body.grid_columnconfigure(1, weight=1, minsize=600)
+        
+        # Criando o Tabview para a Sidebar
+        self.sidebar_tabs = ctk.CTkTabview(body, width=350, corner_radius=15, fg_color=get_color_tuple("surface"))
+        self.sidebar_tabs.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+        self.sidebar_tabs.add("Assistente")
+        self.sidebar_tabs.add("Histórico")
+        
+        self.sidebar_tabs.tab("Assistente").grid_columnconfigure(0, weight=1)
+        self.sidebar_tabs.tab("Assistente").grid_rowconfigure(0, weight=1)
+        
+        self.sidebar_tabs.tab("Histórico").grid_columnconfigure(0, weight=1)
+        self.sidebar_tabs.tab("Histórico").grid_rowconfigure(0, weight=1)
+        
+        self._build_chat_panel(self.sidebar_tabs.tab("Assistente"), 0)
         self._build_output(body, 1)
-        self._build_historico(body, 2)
+        self._build_historico(self.sidebar_tabs.tab("Histórico"), 0)
 
     def _get_emoji_icon(self, emoji_char: str, size: tuple = (20, 20)) -> Optional[ctk.CTkImage]:
         """Gera um ícone colorido em tempo real lendo a fonte COLR/CPAL do Windows."""
@@ -129,166 +133,171 @@ class GeradorSEIApp(ctk.CTk):
             return None
 
     def _build_chat_panel(self, parent, col):
-        frame = ctk.CTkFrame(parent, fg_color=get_color_tuple("surface"), corner_radius=12)
-        frame.grid(row=0, column=col, sticky="nsew", padx=(0, 10))
-        frame.grid_rowconfigure(3, weight=1)
+        frame = ctk.CTkFrame(parent, fg_color="transparent")
+        frame.grid(row=0, column=col, sticky="nsew")
+        frame.grid_rowconfigure(2, weight=1)
         frame.grid_columnconfigure(0, weight=1)
         
-        icon_robot = self._get_emoji_icon("🤖", (24, 24))
-        ctk.CTkLabel(
-            frame, 
-            text=" Assistente" if icon_robot else "🤖 Assistente", 
-            image=icon_robot,
-            compound="left",
-            font=ctk.CTkFont(size=16, weight="bold")
-        ).grid(row=0, column=0, sticky="w", pady=(10, 10), padx=10)
-        
         molde_frame = ctk.CTkFrame(frame, fg_color="transparent")
-        molde_frame.grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 10))
-        ctk.CTkLabel(molde_frame, text="Molde do Documento:", font=ctk.CTkFont(size=12)).pack(side="left", padx=(0, 5))
+        molde_frame.grid(row=0, column=0, sticky="ew", pady=(10, 15))
+        ctk.CTkLabel(molde_frame, text="Molde:", font=get_font(13, "bold"), text_color=get_color_tuple("text_secondary")).pack(side="left", padx=(0, 10))
         self.ia_molde_var = tk.StringVar(value="AUTO")
-        self.ia_molde_combo = ctk.CTkComboBox(molde_frame, variable=self.ia_molde_var, values=["AUTO", "EXTRAÇÃO", "OUVIDORIA MINUTA", "OUVIDORIA SUBAN", "OUVIDORIA ELOGIO", "DILACAO", "GENERICO"], state="readonly", height=28)
+        self.ia_molde_combo = ctk.CTkComboBox(molde_frame, variable=self.ia_molde_var, values=["AUTO", "EXTRAÇÃO", "OUVIDORIA MINUTA", "OUVIDORIA SUBAN", "OUVIDORIA ELOGIO", "DILACAO", "GENERICO"], state="readonly", height=35, corner_radius=8, font=get_font(13))
         self.ia_molde_combo.pack(side="left", fill="x", expand=True)
         
         icon_folder = self._get_emoji_icon("📁", (20, 20))
         ctk.CTkButton(
             frame, 
-            text=" Analisar Processo (Pasta)" if icon_folder else "📁 Analisar Processo (Pasta)", 
+            text=" Analisar Processo", 
             image=icon_folder,
             compound="left",
             command=self._on_analisar_pasta, 
-            height=40, 
-            font=ctk.CTkFont(weight="bold")
-        ).grid(row=2, column=0, sticky="ew", padx=10, pady=(0, 10))
+            height=45, 
+            corner_radius=10,
+            font=get_font(14, "bold"),
+            fg_color=get_color_tuple("primary"),
+            hover_color=get_color_tuple("hover_primary")
+        ).grid(row=1, column=0, sticky="ew", pady=(0, 15))
         
-        self.chat_history = ctk.CTkTextbox(frame, font=ctk.CTkFont(size=13), wrap="word", state="disabled")
-        self.chat_history.grid(row=3, column=0, sticky="nsew", padx=10, pady=(0, 10))
+        self.chat_history = ctk.CTkTextbox(frame, font=get_font(14), wrap="word", state="disabled", fg_color="transparent", border_width=1, border_color=get_color_tuple("border"), corner_radius=10)
+        self.chat_history.grid(row=2, column=0, sticky="nsew", pady=(0, 15))
         
         input_frame = ctk.CTkFrame(frame, fg_color="transparent")
-        input_frame.grid(row=4, column=0, sticky="ew", padx=10, pady=(0, 10))
+        input_frame.grid(row=3, column=0, sticky="ew", pady=(0, 10))
         input_frame.grid_columnconfigure(0, weight=1)
         
-        self.chat_input = ctk.CTkEntry(input_frame, placeholder_text="O que alterar?", height=35)
-        self.chat_input.grid(row=0, column=0, sticky="ew", padx=(0, 5))
+        self.chat_input = ctk.CTkEntry(input_frame, placeholder_text="Instruções...", height=45, corner_radius=10, font=get_font(14), border_width=1)
+        self.chat_input.grid(row=0, column=0, sticky="ew", padx=(0, 10))
         self.chat_input.bind("<Return>", lambda e: self._on_enviar_chat())
         
-        ctk.CTkButton(input_frame, text="Enviar", width=60, height=35, command=self._on_enviar_chat).grid(row=0, column=1)
+        icon_send = self._get_emoji_icon("📤", (20, 20))
+        ctk.CTkButton(input_frame, text="", image=icon_send, width=45, height=45, corner_radius=10, command=self._on_enviar_chat, fg_color=get_color_tuple("primary"), hover_color=get_color_tuple("hover_primary")).grid(row=0, column=1)
 
     def _build_output(self, parent, col):
-        frame = ctk.CTkFrame(parent, fg_color=get_color_tuple("surface"), corner_radius=12)
-        frame.grid(row=0, column=col, sticky="nsew", padx=10)
+        frame = ctk.CTkFrame(parent, fg_color=get_color_tuple("surface"), corner_radius=15)
+        frame.grid(row=0, column=col, sticky="nsew", padx=(10, 0))
         frame.grid_rowconfigure(1, weight=1)
         frame.grid_columnconfigure(0, weight=1)
         
         header = ctk.CTkFrame(frame, fg_color="transparent")
-        header.grid(row=0, column=0, sticky="ew", padx=15, pady=15)
-        icon_result = self._get_emoji_icon("📝", (24, 24))
-        ctk.CTkLabel(
-            header, 
-            text=" Resultado" if icon_result else "📝 Resultado", 
-            image=icon_result,
-            compound="left",
-            font=ctk.CTkFont(size=16, weight="bold")
-        ).pack(side="left")
+        header.grid(row=0, column=0, sticky="ew", padx=30, pady=(20, 15))
         
-        self.text_saida = ctk.CTkTextbox(frame, font=ctk.CTkFont(size=14, family="Consolas"), wrap="word")
-        self.text_saida.grid(row=1, column=0, sticky="nsew", padx=15, pady=(0, 15))
+        title_frame = ctk.CTkFrame(header, fg_color="transparent")
+        title_frame.pack(side="left", fill="y")
+        
+        icon_logo = self._get_emoji_icon("⚡", (28, 28))
+        if icon_logo:
+            ctk.CTkLabel(title_frame, text="", image=icon_logo).pack(side="left")
+        ctk.CTkLabel(title_frame, text=" Gerador SEI", font=get_font(24, "bold"), text_color=get_color_tuple("text_primary")).pack(side="left", padx=(10,0))
+        
+        self.theme_btn = ctk.CTkButton(header, text="Light" if self.theme_manager.is_dark else "Dark", width=80, height=36, corner_radius=18, command=self._toggle_theme, fg_color=get_color_tuple("primary"), text_color=get_color_tuple("text_primary"), font=get_font(13, "bold"))
+        self.theme_btn.pack(side="right")
+        
+        self.text_saida = ctk.CTkTextbox(frame, font=get_font(16, family="Segoe UI"), wrap="word", fg_color="transparent", corner_radius=0)
+        self.text_saida.grid(row=1, column=0, sticky="nsew", padx=30, pady=(0, 15))
         self.text_saida.insert("1.0", "O documento gerado aparecerá aqui...")
         
         footer = ctk.CTkFrame(frame, fg_color="transparent")
-        footer.grid(row=2, column=0, sticky="ew", padx=15, pady=(0, 15))
-        self.status_label = ctk.CTkLabel(footer, text="Pronto.", text_color=get_color_tuple("success"))
+        footer.grid(row=2, column=0, sticky="ew", padx=30, pady=(0, 20))
+        self.status_label = ctk.CTkLabel(footer, text="Pronto.", font=get_font(14, "bold"), text_color=get_color_tuple("success"))
         self.status_label.pack(side="left")
         
-        self.progress_bar = ctk.CTkProgressBar(footer, mode="indeterminate", width=200)
+        self.progress_bar = ctk.CTkProgressBar(footer, mode="indeterminate", width=200, height=8, corner_radius=4)
         self.progress_bar.set(0)
         
         icon_copy = self._get_emoji_icon("📋", (20, 20))
         ctk.CTkButton(
             footer, 
-            text=" Copiar e Limpar" if icon_copy else "📋 Copiar e Limpar", 
+            text=" Limpar", 
             image=icon_copy,
             compound="left",
             command=self._on_copiar_limpar, 
-            height=35
+            height=40,
+            corner_radius=8,
+            font=get_font(13, "bold"),
+            fg_color="transparent",
+            border_width=1,
+            text_color=get_color_tuple("text_primary")
         ).pack(side="right")
         
         icon_copy_minuta = self._get_emoji_icon("📋", (20, 20))
         self.btn_copiar_minuta = ctk.CTkButton(
             footer, 
-            text=" Copiar Minuta" if icon_copy_minuta else "📋 Copiar Minuta", 
+            text=" Copiar", 
             image=icon_copy_minuta,
             compound="left",
             command=self._on_copiar_minuta, 
-            height=35
+            height=40,
+            corner_radius=8,
+            font=get_font(13, "bold"),
+            fg_color=get_color_tuple("primary")
         )
         self.btn_copiar_minuta.pack(side="right", padx=(10, 10))
         
         icon_pdf = self._get_emoji_icon("📄", (20, 20))
         ctk.CTkButton(
             footer, 
-            text=" PDF" if icon_pdf else "📄 PDF", 
+            text=" PDF", 
             image=icon_pdf,
             compound="left",
             command=self._on_pdf, 
-            height=35, 
+            height=40, 
+            corner_radius=8,
+            font=get_font(13, "bold"),
             fg_color="transparent", 
-            border_width=1
+            border_width=1,
+            text_color=get_color_tuple("text_primary")
         ).pack(side="right", padx=10)
 
     def _build_historico(self, parent, col):
-        frame = ctk.CTkFrame(parent, fg_color=get_color_tuple("surface"), corner_radius=12)
-        frame.grid(row=0, column=col, sticky="nsew", padx=(10, 0))
+        frame = ctk.CTkFrame(parent, fg_color="transparent")
+        frame.grid(row=0, column=col, sticky="nsew")
         
         frame.grid_columnconfigure(0, weight=1)
-        frame.grid_rowconfigure(2, weight=1)  # Caixa da lista de histórico
-        frame.grid_rowconfigure(3, weight=2)  # Caixa de visualização do texto
-
-        header = ctk.CTkFrame(frame, fg_color="transparent")
-        header.grid(row=0, column=0, sticky="ew", padx=15, pady=(15, 10))
-        icon_history = self._get_emoji_icon("📚", (24, 24))
-        ctk.CTkLabel(
-            header, 
-            text=" Histórico" if icon_history else "📚 Histórico", 
-            image=icon_history,
-            compound="left",
-            font=ctk.CTkFont(size=16, weight="bold")
-        ).pack(side="left")
+        frame.grid_rowconfigure(1, weight=1)  # Caixa da lista de histórico
+        frame.grid_rowconfigure(2, weight=2)  # Caixa de visualização do texto
         
         search_frame = ctk.CTkFrame(frame, fg_color="transparent")
-        search_frame.grid(row=1, column=0, sticky="ew", padx=15, pady=(0, 10))
+        search_frame.grid(row=0, column=0, sticky="ew", pady=(10, 15))
         search_frame.grid_columnconfigure(0, weight=1)
-        self.history_search_entry = ctk.CTkEntry(search_frame, placeholder_text="🔍 Buscar no histórico...")
+        self.history_search_entry = ctk.CTkEntry(search_frame, placeholder_text="🔍 Buscar...", height=38, corner_radius=8, font=get_font(13))
         self.history_search_entry.grid(row=0, column=0, sticky="ew")
         self.history_search_entry.bind("<KeyRelease>", self._on_history_search)
-
-        self.historico_scroll = ctk.CTkScrollableFrame(frame, fg_color="transparent", height=160)
-        self.historico_scroll.grid(row=2, column=0, sticky="nsew", padx=10, pady=(0, 10))
-
-        self.history_text_display = ctk.CTkTextbox(frame, font=ctk.CTkFont(size=13, family="Consolas"), wrap="word", state="disabled")
-        self.history_text_display.grid(row=3, column=0, sticky="nsew", padx=15, pady=(0, 10))
-
-        footer = ctk.CTkFrame(frame, fg_color="transparent")
-        footer.grid(row=4, column=0, sticky="ew", padx=15, pady=(0, 15))
         
+        self.historico_scroll = ctk.CTkScrollableFrame(frame, fg_color="transparent")
+        self.historico_scroll.grid(row=1, column=0, sticky="nsew", pady=(0, 15))
+        
+        self.history_text_display = ctk.CTkTextbox(frame, font=get_font(13), wrap="word", state="disabled", fg_color="transparent", border_width=1, border_color=get_color_tuple("border"), corner_radius=10)
+        self.history_text_display.grid(row=2, column=0, sticky="nsew", pady=(0, 15))
+        
+        footer = ctk.CTkFrame(frame, fg_color="transparent")
+        footer.grid(row=3, column=0, sticky="ew", pady=(0, 10))
+        
+        icon_brain = self._get_emoji_icon("🧠", (20, 20))
         ctk.CTkButton(
             footer, 
-            text="Alimentar Ollama", 
+            text=" Alimentar", 
+            image=icon_brain,
+            compound="left",
             command=self._on_alimentar_ia, 
-            width=120, 
-            height=35, 
+            height=40,
+            corner_radius=8,
+            font=get_font(13, "bold"),
             fg_color="transparent", 
-            border_width=1
+            border_width=1,
+            text_color=get_color_tuple("text_primary")
         ).pack(side="left")
-
+        
         icon_copy_hist = self._get_emoji_icon("📋", (20, 20))
         self.btn_copy_history = ctk.CTkButton(
             footer,
-            text=" Copiar Histórico" if icon_copy_hist else "📋 Copiar Histórico",
+            text=" Copiar",
             image=icon_copy_hist,
             compound="left",
             command=self._on_copy_history_text,
-            height=35
+            height=40,
+            corner_radius=8,
+            font=get_font(13, "bold")
         )
         self.btn_copy_history.pack(side="right")
 

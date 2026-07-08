@@ -3,19 +3,19 @@ import customtkinter as ctk
 
 # Color schemes for light and dark modes
 COLOR_SCHEME: Dict[str, Tuple[str, str]] = {
-    "background": ("#FFFFFF", "#1A1A1A"),
-    "surface": ("#F5F5F5", "#252525"),
-    "primary": ("#2563EB", "#007BFF"),
-    "secondary": ("#64748B", "#94A3B8"),
-    "success": ("#10B981", "#34D399"),
-    "warning": ("#F59E0B", "#FBBF24"),
-    "error": ("#EF4444", "#F87171"),
-    "text_primary": ("#1F2937", "#F1F5F9"),
-    "text_secondary": ("#6B7280", "#CBD5E1"),
-    "border": ("#E5E7EB", "#374151"),
-    "hover_primary": ("#1D4ED8", "#0056CC"),
-    "hover_surface": ("#E5E7EB", "#2D2D2D"),
-    "focus_border": ("#3B82F6", "#0EA5E9")
+    "background": ("#F8FAFC", "#0F172A"), # Slate 50 / Slate 900
+    "surface": ("#FFFFFF", "#1E293B"),    # White / Slate 800
+    "primary": ("#4F46E5", "#6366F1"),    # Indigo 600 / Indigo 500
+    "secondary": ("#64748B", "#94A3B8"),  # Slate 500 / Slate 400
+    "success": ("#10B981", "#34D399"),    # Emerald 500 / Emerald 400
+    "warning": ("#F59E0B", "#FBBF24"),    # Amber 500 / Amber 400
+    "error": ("#EF4444", "#F87171"),      # Red 500 / Red 400
+    "text_primary": ("#0F172A", "#F8FAFC"), # Slate 900 / Slate 50
+    "text_secondary": ("#475569", "#CBD5E1"),# Slate 600 / Slate 300
+    "border": ("#E2E8F0", "#334155"),     # Slate 200 / Slate 700
+    "hover_primary": ("#4338CA", "#4F46E5"),# Indigo 700 / Indigo 600
+    "hover_surface": ("#F1F5F9", "#334155"),# Slate 100 / Slate 700
+    "focus_border": ("#6366F1", "#818CF8")  # Indigo 500 / Indigo 400
 }
 
 def get_color_tuple(key: str) -> Tuple[str, str]:
@@ -27,11 +27,11 @@ def configure_appearance(is_dark: bool) -> None:
     ctk.set_appearance_mode("dark" if is_dark else "light")
     ctk.set_default_color_theme("blue")
 
-def get_font(size: int = 12, weight: str = "normal", family: Optional[str] = None) -> ctk.CTkFont:
-    """Get standardized font."""
-    if family:
-        return ctk.CTkFont(size=size, weight=weight, family=family)
-    return ctk.CTkFont(size=size, weight=weight)
+def get_font(size: int = 13, weight: str = "normal", family: Optional[str] = None) -> ctk.CTkFont:
+    """Get standardized font. Default to Segoe UI."""
+    if not family:
+        family = "Segoe UI"
+    return ctk.CTkFont(size=size, weight=weight, family=family)
 
 def get_hover_color(base_color_key: str, theme_manager) -> str:
     """Get appropriate hover color based on theme."""
