@@ -35,7 +35,8 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from sei_templates import (
     PREFIXO_DOCUMENTO, RESUMO_CRONOGRAMA,
     MODELO_HVEP, MODELO_CASTRACAO, MODELO_CONDICOES_HVEP, MODELO_CRONOGRAMA_CASTRACAO,
-    MODELO_OUVIDORIA_SUBAN
+    MODELO_OUVIDORIA_SUBAN, MOLDE_RESUMO_EXECUTIVO,
+    MOLDE_LINHA_TEMPO, MOLDE_AUDITORIA_CONFORMIDADE
 )
 
 logger = logging.getLogger(__name__)
@@ -113,20 +114,35 @@ class HistoryDB:
                 timestamp DATETIME DEFAULT (datetime('now', 'localtime')),
                 doc_type TEXT,
                 subject TEXT,
-                full_text TEXT NOT NULL
+                full_text TEXT NOT NULL,
+                process_context TEXT
             )
         """)
+        # Migration: add process_context column if missing in existing table
+        try:
+            cursor.execute("SELECT process_context FROM history LIMIT 1")
+        except sqlite3.OperationalError:
+            try:
+                cursor.execute("ALTER TABLE history ADD COLUMN process_context TEXT")
+            except Exception:
+                pass
         self.conn.commit()
 
-    def add_entry(self, doc_type: str, subject: str, full_text: str) -> int:
+    def add_entry(self, doc_type: str, subject: str, full_text: str, process_context: str = "") -> int:
         cursor = self.conn.cursor()
         agora = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         cursor.execute(
-            "INSERT INTO history (timestamp, doc_type, subject, full_text) VALUES (?, ?, ?, ?)",
-            (agora, doc_type, subject, full_text)
+            "INSERT INTO history (timestamp, doc_type, subject, full_text, process_context) VALUES (?, ?, ?, ?, ?)",
+            (agora, doc_type, subject, full_text, process_context)
         )
         self.conn.commit()
         return cursor.lastrowid
+
+    def delete_entry(self, entry_id: int) -> bool:
+        cursor = self.conn.cursor()
+        cursor.execute("DELETE FROM history WHERE id = ?", (entry_id,))
+        self.conn.commit()
+        return cursor.rowcount > 0
 
     def get_all_entries(self, limit: int = 50) -> List[Dict]:
         cursor = self.conn.cursor()
@@ -137,10 +153,16 @@ class HistoryDB:
         cursor = self.conn.cursor()
         query = "%" + search_term + "%"
         cursor.execute(
-            "SELECT * FROM history WHERE subject LIKE ? OR full_text LIKE ? ORDER BY timestamp DESC LIMIT ?",
-            (query, query, limit)
+            "SELECT * FROM history WHERE subject LIKE ? OR full_text LIKE ? OR doc_type LIKE ? ORDER BY timestamp DESC LIMIT ?",
+            (query, query, query, limit)
         )
         return [dict(row) for row in cursor.fetchall()]
+
+    def close(self):
+        try:
+            self.conn.close()
+        except Exception:
+            pass
 
 # Classe SEIEngine: define comportamento e estrutura desta parte do aplicativo.
 class SEIEngine:
@@ -332,6 +354,94 @@ class SEIEngine:
         except Exception as err:
             return False, str(err)
 
+    def export_to_docx(self, text: str, filepath: str) -> Tuple[bool, str]:
+        """Export text to DOCX with GDF official formatting."""
+        try:
+            import docx
+            from docx.shared import Pt, Inches, RGBColor
+            from docx.enum.text import WD_ALIGN_PARAGRAPH
+            
+            doc = docx.Document()
+            
+            # Margens padrão A4 (3cm esquerda/superior, 2cm direita/inferior)
+            for section in doc.sections:
+                section.top_margin = Inches(1.18)
+                section.bottom_margin = Inches(0.78)
+                section.left_margin = Inches(1.18)
+                section.right_margin = Inches(0.78)
+                
+            lines = text.strip().split("\n")
+            
+            for line in lines:
+                raw_line = line.strip()
+                if not raw_line:
+                    doc.add_paragraph()
+                    continue
+                    
+                # Divisores
+                if re.match(r'^[=\-]{5,}$', raw_line):
+                    continue
+                    
+                p = doc.add_paragraph()
+                p.paragraph_format.space_after = Pt(4)
+                p.paragraph_format.line_spacing = 1.3
+                
+                # Títulos de Seção de Resumo / Linha do Tempo / Auditoria
+                if re.match(r'^\d+\.\s+[A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇ\s\/\-]+$', raw_line) or raw_line in ("ORDEM CRONOLÓGICA DE ATOS E DOCUMENTOS", "RESUMO DA FASE ATUAL:"):
+                    run = p.add_run(raw_line)
+                    run.bold = True
+                    run.font.name = 'Segoe UI'
+                    run.font.size = Pt(11)
+                    run.font.color.rgb = RGBColor(0x1E, 0x3A, 0x8A)
+                    p.paragraph_format.space_before = Pt(10)
+                    continue
+                    
+                # Cabeçalhos
+                if raw_line in ("Governo do Distrito Federal", "Despacho - SEPAN/GAB/ASSESP", "SUJEITO A PRAZO") or "Secretaria Extraordinária" in raw_line:
+                    run = p.add_run(raw_line)
+                    run.bold = True
+                    run.font.name = 'Segoe UI'
+                    run.font.size = Pt(11)
+                    if raw_line == "SUJEITO A PRAZO":
+                        run.font.color.rgb = RGBColor(0xC0, 0x00, 0x00)
+                    p.alignment = WD_ALIGN_PARAGRAPH.CENTER if raw_line in ("Governo do Distrito Federal", "SUJEITO A PRAZO") else WD_ALIGN_PARAGRAPH.LEFT
+                elif raw_line == "MINUTA":
+                    run = p.add_run(raw_line)
+                    run.bold = True
+                    run.font.name = 'Segoe UI'
+                    run.font.size = Pt(12)
+                    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    p.paragraph_format.space_before = Pt(12)
+                    p.paragraph_format.space_after = Pt(8)
+                elif raw_line.startswith(('•', '-', '*')):
+                    p.paragraph_format.left_indent = Inches(0.25)
+                    clean_item = re.sub(r'^[•\-\*]\s*', '', raw_line)
+                    if ':' in clean_item and len(clean_item.split(':')[0]) < 40:
+                        parts = clean_item.split(':', 1)
+                        r1 = p.add_run('• ' + parts[0] + ':')
+                        r1.bold = True
+                        r1.font.name = 'Segoe UI'
+                        r1.font.size = Pt(10.5)
+                        r2 = p.add_run(parts[1])
+                        r2.font.name = 'Segoe UI'
+                        r2.font.size = Pt(10.5)
+                    else:
+                        r = p.add_run('• ' + clean_item)
+                        r.font.name = 'Segoe UI'
+                        r.font.size = Pt(10.5)
+                else:
+                    p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+                    if re.match(r'^\d+\.', raw_line) or raw_line.startswith(("Encaminha-se", "Trata-se")):
+                        p.paragraph_format.first_line_indent = Inches(0.5)
+                    run = p.add_run(raw_line)
+                    run.font.name = 'Segoe UI'
+                    run.font.size = Pt(11)
+                    
+            doc.save(filepath)
+            return True, ""
+        except Exception as err:
+            return False, str(err)
+
     def add_custom_modelo(self, nome: str, template: str) -> bool:
         """Add custom model string template with tag placeholders."""
         if nome and template and nome not in self.modelos:
@@ -368,11 +478,15 @@ class SEIEngine:
         """Get list of available models."""
         return list(self.modelos.keys())
 
-    def save_to_history(self, doc_type: str, subject: str, full_text: str) -> int:
+    def save_to_history(self, doc_type: str, subject: str, full_text: str, process_context: str = "") -> int:
         """Saves a generated document to the history database."""
         if not full_text.strip():
             return -1
-        return self.history_db.add_entry(doc_type, subject, full_text)
+        return self.history_db.add_entry(doc_type, subject, full_text, process_context=process_context)
+
+    def delete_history_entry(self, entry_id: int) -> bool:
+        """Deletes an entry from history."""
+        return self.history_db.delete_entry(entry_id)
 
     def get_history(self) -> List[Dict]:
         """Retrieves all entries from the history database."""
@@ -446,6 +560,51 @@ class SEIEngine:
 
         return texto.strip()
 
+    def extrair_texto_de_alvo(self, target_path: str) -> Tuple[str, str]:
+        """
+        Extrai texto unificado e transparente a partir de:
+        - Pasta contendo múltiplos arquivos
+        - Arquivo compactado (.zip) com descompactação temporária
+        - Arquivo individual (.pdf, .docx, .txt, .html, .htm)
+        Retorna (texto_extraido, nome_identificador)
+        """
+        import tempfile
+        extracted_text = ""
+        target_name = os.path.basename(target_path)
+        
+        if not os.path.exists(target_path):
+            return "", target_name
+            
+        if os.path.isfile(target_path):
+            if target_path.lower().endswith('.zip'):
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    try:
+                        with zipfile.ZipFile(target_path, 'r') as zip_ref:
+                            zip_ref.extractall(temp_dir)
+                        file_list = []
+                        for root, dirs, files in os.walk(temp_dir):
+                            for f in files:
+                                if f.lower().endswith(('.pdf', '.txt', '.html', '.htm', '.docx')):
+                                    file_list.append(os.path.join(root, f))
+                        file_list.sort(key=lambda x: int(re.search(r'\[(\d+)\]', os.path.basename(x)).group(1)) if re.search(r'\[(\d+)\]', os.path.basename(x)) else 999999)
+                        for fpath in file_list:
+                            extracted_text += self._extrair_texto_arquivo(fpath) + "\n\n"
+                    except Exception as e:
+                        logger.error(f"Erro ao extrair zip {target_path}: {e}")
+            else:
+                extracted_text = self._extrair_texto_arquivo(target_path)
+        elif os.path.isdir(target_path):
+            file_list = []
+            for root, dirs, files in os.walk(target_path):
+                for f in files:
+                    if f.lower().endswith(('.pdf', '.txt', '.html', '.htm', '.docx')):
+                        file_list.append(os.path.join(root, f))
+            file_list.sort(key=lambda x: int(re.search(r'\[(\d+)\]', os.path.basename(x)).group(1)) if re.search(r'\[(\d+)\]', os.path.basename(x)) else 999999)
+            for fpath in file_list:
+                extracted_text += self._extrair_texto_arquivo(fpath) + "\n\n"
+                
+        return extracted_text.strip(), target_name
+
     def _get_regras_redacao(self) -> str:
         """Lê regras de redação do config.json ou retorna as regras padrão."""
         regras_padrao = (
@@ -474,7 +633,7 @@ class SEIEngine:
 
     def processar_pasta_com_ia(self, folderpath: str, historico: list = None, stream_callback=None, molde_ia: str = "AUTO") -> Dict[str, Any]:
         """
-        Processa todos os documentos de uma pasta de processo SEI,
+        Processa todos os documentos de um processo SEI (pasta, .zip ou arquivo),
         busca exemplos no banco de vetores e gera resposta com Ollama (Local).
         """
         # Verifica se o Ollama está online antes de começar
@@ -486,7 +645,6 @@ class SEIEngine:
         hoje = datetime.datetime.now()
         data_atual = f"{hoje.day} de {meses[hoje.month]} de {hoje.year}"
 
-        extracted_text = ""
         try:
             try:
                 # pyrefly: ignore [missing-import]
@@ -494,16 +652,11 @@ class SEIEngine:
             except ImportError as e:
                 return {"sucesso": False, "erro": f"Erro de dependência ({str(e)}). Execute 'pip install ollama' no terminal."}
             
-            # 1. Extração de texto de arquivos dentro da pasta
-            for root, dirs, files in os.walk(folderpath):
-                files.sort(key=lambda x: int(re.search(r'\[(\d+)\]', x).group(1)) if re.search(r'\[(\d+)\]', x) else 999999)
-                for file in files:
-                    if file.lower().endswith(('.pdf', '.txt', '.html', '.htm', '.docx')):
-                        filepath = os.path.join(root, file)
-                        extracted_text += self._extrair_texto_arquivo(filepath) + "\n\n"
+            # 1. Extração unificada de texto (suporta Pastas, ZIPs e arquivos únicos)
+            extracted_text, target_name = self.extrair_texto_de_alvo(folderpath)
             
             if not extracted_text.strip():
-                return {"sucesso": False, "erro": "Nenhum texto extraível foi encontrado nos arquivos da pasta (Podem ser arquivos sem OCR ou faltam bibliotecas)."}
+                return {"sucesso": False, "erro": "Nenhum texto extraível foi encontrado no processo selecionado (Podem ser arquivos sem OCR ou formato não suportado)."}
 
             # Extrai o Assunto prioritariamente do Despacho da ASSESP (faz isso antes de truncar o texto)
             assunto_match = re.search(r'Despacho - SEPAN/GAB/ASSESP.*?Assunto:\s*([^\n]+)', extracted_text, re.IGNORECASE | re.DOTALL)
@@ -511,11 +664,20 @@ class SEIEngine:
                 assunto_match = re.search(r'Assunto:\s*([^\n]+)', extracted_text, re.IGNORECASE)
             assunto_extraido = assunto_match.group(1).strip() if assunto_match else ""
 
-            # Limitar o texto para não estourar o contexto da IA (Foco no final do processo)
-            extracted_text = extracted_text[-8000:] if len(extracted_text) > 8000 else extracted_text
-
             # 1.5 Classificação do Processo (Routing)
-            if molde_ia == "EXTRAÇÃO":
+            if molde_ia in ("RESUMÃO", "RESUMO", "RESUMÃO DO PROCESSO"):
+                tipo_detectado = "RESUMÃO"
+                if stream_callback:
+                    stream_callback(f"[Modo Selecionado: {tipo_detectado}]\nSintetizando histórico e informações do processo...\n\n")
+            elif molde_ia in ("LINHA DO TEMPO", "CRONOLOGIA"):
+                tipo_detectado = "LINHA DO TEMPO"
+                if stream_callback:
+                    stream_callback(f"[Modo Selecionado: {tipo_detectado}]\nMontando cronologia de atos do processo...\n\n")
+            elif molde_ia in ("AUDITORIA", "AUDITORIA / CONFORMIDADE", "CONFORMIDADE"):
+                tipo_detectado = "AUDITORIA"
+                if stream_callback:
+                    stream_callback(f"[Modo Selecionado: {tipo_detectado}]\nAuditando prazos e conformidade com as normas...\n\n")
+            elif molde_ia == "EXTRAÇÃO":
                 tipo_detectado = "EXTRAÇÃO"
                 if stream_callback:
                     stream_callback(f"[Modo Selecionado: {tipo_detectado}]\nExtraindo pontos importantes...\n\n")
@@ -541,6 +703,13 @@ class SEIEngine:
                 if stream_callback:
                     stream_callback(f"[Molde Selecionado: {tipo_detectado}]\nGerando documento...\n\n")
 
+            # Limitar o texto para não estourar o contexto da IA (foco proporcional)
+            if tipo_detectado in ("RESUMÃO", "LINHA DO TEMPO", "AUDITORIA"):
+                if len(extracted_text) > 12000:
+                    extracted_text = extracted_text[:4500] + "\n\n[... DOCUMENTOS INTERMEDIÁRIOS OMITIDOS PARA CONCISÃO ...]\n\n" + extracted_text[-7500:]
+            else:
+                extracted_text = extracted_text[-8000:] if len(extracted_text) > 8000 else extracted_text
+
             # 2. Busca de Exemplos Passados (RAG com ChromaDB)
             contexto_historico = ""
             try:
@@ -552,8 +721,144 @@ class SEIEngine:
             except Exception as e:
                 logger.error(f"Aviso Banco de Vetores (RAG falhou): {e}", exc_info=True)
             
-            # 3. Definição do Prompt com base no modo (Geração ou Extração)
-            if tipo_detectado == "EXTRAÇÃO":
+            # 3. Definição do Prompt com base no modo selecionado
+            if tipo_detectado == "RESUMÃO":
+                system_prompt = """Você é um analista executivo sênior e assessor técnico da Secretaria Extraordinária de Proteção Animal (SEPAN) / Governo do Distrito Federal (GDF).
+Sua tarefa é analisar os autos e documentos do processo SEI fornecido e elaborar um RESUMÃO EXECUTIVO COMPLETO, estruturado, objetivo e minucioso.
+
+ESTRUTURA OBRIGATÓRIA DA SUA RESPOSTA:
+================================================================================
+                    RESUMO EXECUTIVO DO PROCESSO SEI
+================================================================================
+
+1. IDENTIFICAÇÃO DO PROCESSO
+• Processo SEI nº: (Indicar o número do processo SEI)
+• Interessado / Demandante: (Nome do cidadão, órgão, empresa ou entidade solicitante)
+• Documento de Origem / Protocolo: (Ofício, Protocolo Ouvidoria OUV-DF, Manifestação ou documento inicial)
+• Assunto Geral: (Tema principal do processo)
+
+2. OBJETO DA DEMANDA / SÍNTESE DO PEDIDO
+(Apresente um resumo claro e conciso do que motivou a abertura do processo, qual a queixa, solicitação, denúncia ou requerimento formulado.)
+
+3. HISTÓRICO E TRAMITAÇÃO DOS FATOS
+(Apresente uma narrativa cronológica e coesa com os principais acontecimentos, manifestações dos setores envolvidos como Suban, HVeP, Ouvidoria, ASSESP, etc., despachos e providências já adotadas ao longo dos autos.)
+
+4. PONTOS TÉCNICOS E JURÍDICOS RELEVANTES
+(Destaque pareceres ou informações técnicas prestadas, normas ou leis citadas, constatações de vistorias, laudos, impedimentos ou justificativas apresentadas.)
+
+5. SITUAÇÃO ATUAL, PRAZOS E PRÓXIMAS ETAPAS
+• Status Atual: (Em qual setor ou situação o processo se encontra atualmente)
+• Prazos Aplicáveis: (Prazos legais da Ouvidoria, prazos judiciais ou administrativos pendentes, se houver)
+• Encaminhamento / Providência Sugerida: (Ação que deve ser realizada a seguir: minuta de resposta à Ouvidoria, despacho para outro setor, arquivamento, etc.)
+================================================================================
+
+DIRETRIZES FUNDAMENTAIS:
+- Não invente informações. Se algo não constar nos autos, preencha como 'Não informado nos autos'.
+- Seja preciso com datas, números de documentos SEI e nomes de unidades/setores.
+- Não gere blocos de assinatura ou rodapés burocráticos ao final.
+- Use tom formal, claro e estritamente técnico."""
+                user_prompt = f"""Aqui estão os autos e documentos extraídos da pasta do processo SEI:
+
+--- INÍCIO DOS DOCUMENTOS DO PROCESSO ---
+{extracted_text}
+--- FIM DOS DOCUMENTOS DO PROCESSO ---
+
+Com base exclusivamente nos fatos e documentos acima, gere o RESUMÃO EXECUTIVO DO PROCESSO seguindo rigorosamente a estrutura obrigatória solicitada."""
+                ia_options = {'temperature': 0.25, 'top_p': 0.85}
+            elif tipo_detectado == "LINHA DO TEMPO":
+                system_prompt = """Você é um analista processual sênior do Governo do Distrito Federal.
+Sua tarefa é ler todos os autos e documentos do processo SEI e construir uma LINHA DO TEMPO / CRONOLOGIA COMPLETA E CRONOLÓGICA DE ATOS.
+
+ESTRUTURA OBRIGATÓRIA:
+================================================================================
+                 LINHA DO TEMPO / CRONOLOGIA DO PROCESSO SEI
+================================================================================
+
+PROCESSO Nº: (Número do Processo SEI)
+INTERESSADO: (Nome do Cidadão / Órgão Demandante)
+ASSUNTO: (Tema Geral)
+
+--------------------------------------------------------------------------------
+ORDEM CRONOLÓGICA DE ATOS E DOCUMENTOS
+--------------------------------------------------------------------------------
+
+(Liste todos os eventos do mais antigo para o mais recente no seguinte formato):
+
+[DATA - DD/MM/AAAA] • Doc. SEI nº [NUMERO] - [TIPO DO DOCUMENTO, ex: Ofício / Despacho / Manifestação]
+- De / Setor: [Órgão/Setor Remetente] ➔ Para: [Setor Destinatário]
+- Síntese da Ação: [Resumo objetivo do que foi solicitado, despachado ou respondido]
+
+--------------------------------------------------------------------------------
+RESUMO DA FASE ATUAL:
+• Último Documento / Despacho: [Identificação do último ato nos autos]
+• Unidade Atual com Carga: [Setor onde o processo se encontra ou deve tramitar]
+• Próxima Ação Necessária: [O que precisa ser feito agora]
+================================================================================
+
+DIRETRIZES:
+- Mantenha a ordem cronológica estrita (dos fatos mais antigos até o momento presente).
+- Seja preciso com datas e números SEI.
+- Não gere assinaturas ao final."""
+                user_prompt = f"""Aqui estão os autos e documentos extraídos do processo SEI:
+
+--- INÍCIO DOS DOCUMENTOS DO PROCESSO ---
+{extracted_text}
+--- FIM DOS DOCUMENTOS DO PROCESSO ---
+
+Com base exclusivamente nos fatos e documentos acima, gere a LINHA DO TEMPO CRONOLÓGICA DO PROCESSO seguindo a estrutura solicitada."""
+                ia_options = {'temperature': 0.2, 'top_p': 0.85}
+            elif tipo_detectado == "AUDITORIA":
+                system_prompt = """Você é um auditor sênior e assessor jurídico-administrativo da Secretaria Extraordinária de Proteção Animal (SEPAN) / GDF.
+Sua tarefa é realizar uma AUDITORIA COMPLETA DE PRAZOS, CONFORMIDADE E ATENDIMENTO INTEGRAL do processo SEI fornecido.
+
+ESTRUTURA OBRIGATÓRIA:
+================================================================================
+           RELATÓRIO DE AUDITORIA, PRAZOS E CONFORMIDADE SEI
+================================================================================
+
+1. DADOS DE IDENTIFICAÇÃO
+• Processo SEI: (Número do processo)
+• Interessado: (Nome do demandante)
+• Documento de Abertura: (Ofício / Protocolo OUV / Manifestação)
+• Data de Autuação / Entrada: (Data de registro ou entrada no órgão)
+
+2. AUDITORIA DE PRAZOS LEGAIS E ADMINISTRATIVOS
+• Prazo Aplicável: (Ex: Lei nº 4.896/2012 de Ouvidoria - 10 ou 20 dias corridos / prazo judicial / administrativo)
+• Data Limite / Vencimento Estimado: (Data de vencimento do prazo)
+• Situação Atual do Prazo: (TEMPESTIVO / NO PRAZO / EXPIRADO / COM DILAÇÃO)
+• Análise do Prazo: (Explicação concisa sobre a contagem dos dias)
+
+3. CHECKLIST DE ATENDIMENTO INTEGRAL À DEMANDA
+• Questionamentos / Pedidos do Cidadão ou Órgão:
+  - (Itemizar cada queixa, dúvida ou pedido individual feito pelo demandante)
+• Respostas Prestadas pelas Áreas Técnicas:
+  - (Itemizar o que cada área técnica - Suban, HVeP, etc. - respondeu para cada item)
+• Diagnóstico de Atendimento: (ATENDIMENTO INTEGRAL / ATENDIMENTO PARCIAL / NÃO ATENDIDO)
+  - (Se parcial ou não atendido, destacar exatamente qual pergunta ficou sem resposta clara)
+
+4. CONFORMIDADE COM NORMAS DE REDAÇÃO OFICIAL GDF
+• Numeração de Parágrafos: (CONFORME / NÃO CONFORME)
+• Impessoalidade (sem 1ª pessoa): (CONFORME / NÃO CONFORME)
+• Nomenclatura Padrão (ex: Serviço Veterinário Público / HVeP, Sepan, Suban): (CONFORME / NÃO CONFORME)
+• Ausência de Assinaturas Fictícias: (CONFORME / NÃO CONFORME)
+
+5. RECOMENDAÇÃO FINAL DA ASSESSORIA
+(Indicar expressamente as providências para sanear eventuais pendências ou se o processo está pronto para expedição/resposta final)
+================================================================================
+
+DIRETRIZES:
+- Seja analítico, minucioso e rigoroso.
+- Não invente fatos. Se algo não constar, anote 'Não consta nos autos'.
+- Não adicione blocos de assinatura ao final."""
+                user_prompt = f"""Aqui estão os autos e documentos extraídos do processo SEI:
+
+--- INÍCIO DOS DOCUMENTOS DO PROCESSO ---
+{extracted_text}
+--- FIM DOS DOCUMENTOS DO PROCESSO ---
+
+Com base exclusivamente nos fatos e documentos acima, gere o RELATÓRIO DE AUDITORIA, PRAZOS E CONFORMIDADE seguindo a estrutura solicitada."""
+                ia_options = {'temperature': 0.2, 'top_p': 0.85}
+            elif tipo_detectado == "EXTRAÇÃO":
                 system_prompt = """Você é um analista experiente e minucioso do Governo do Distrito Federal.
 Sua única tarefa é ler o texto integral do processo fornecido e EXTRAIR OS PONTOS MAIS IMPORTANTES, criando um resumo executivo.
 
@@ -721,7 +1026,7 @@ Lembre-se:
                 conteudo_ia_limpo = re.sub(r'<think>.*', '', conteudo_ia_limpo, flags=re.DOTALL).strip()
 
             # --- GUILHOTINA DE PÓS-PROCESSAMENTO ---
-            if tipo_detectado != "EXTRAÇÃO":
+            if tipo_detectado not in ("EXTRAÇÃO", "RESUMÃO", "LINHA DO TEMPO", "AUDITORIA"):
                 # 1. Remove títulos indesejados no topo gerados pela IA
                 conteudo_ia_limpo = re.sub(r'^(?:\*\*MINUTA COMPLETA\*\*|MINUTA COMPLETA|Aqui está a minuta:.*|MOLDE:.*)\s*\n+', '', conteudo_ia_limpo, flags=re.IGNORECASE).strip()
 
@@ -732,18 +1037,214 @@ Lembre-se:
             # ---------------------------------------
 
             # Inferir o tipo de documento pelo texto gerado
-            tipo_doc = "Resumo" if tipo_detectado == "EXTRAÇÃO" else ("Despacho" if "Despacho" in conteudo_ia_limpo[:200] else "Ofício")
-            resumo_texto = "Extração de Pontos Importantes" if tipo_detectado == "EXTRAÇÃO" else "Minuta gerada via IA"
+            if tipo_detectado == "RESUMÃO":
+                tipo_doc = "Resumão"
+                resumo_texto = "Resumo Executivo do Processo"
+            elif tipo_detectado == "LINHA DO TEMPO":
+                tipo_doc = "Linha do Tempo"
+                resumo_texto = "Cronologia de Atos do Processo"
+            elif tipo_detectado == "AUDITORIA":
+                tipo_doc = "Auditoria"
+                resumo_texto = "Auditoria e Conformidade SEI"
+            elif tipo_detectado == "EXTRAÇÃO":
+                tipo_doc = "Extração"
+                resumo_texto = "Extração de Pontos Importantes"
+            else:
+                tipo_doc = "Despacho" if "Despacho" in conteudo_ia_limpo[:200] else "Ofício"
+                resumo_texto = "Minuta gerada via IA"
 
             return {
                 "sucesso": True,
                 "tipo_documento": tipo_doc,
                 "resumo": resumo_texto,
-                "texto_gerado": conteudo_ia_limpo
+                "texto_gerado": conteudo_ia_limpo,
+                "texto_processo": extracted_text,
+                "nome_processo": target_name
             }
         except Exception as e:
-            logger.error(f"Erro geral em processar_zip_com_ia: {e}", exc_info=True)
+            logger.error(f"Erro geral em processar_pasta_com_ia: {e}", exc_info=True)
             return {"sucesso": False, "erro": str(e)}
+
+    def responder_pergunta_sobre_processo(self, pergunta: str, texto_processo: str, stream_callback=None) -> Dict[str, Any]:
+        """
+        Responde a uma pergunta específica do usuário baseando-se estritamente nos autos do processo carregado.
+        """
+        ollama_ok, erro_ollama = self._verificar_ollama()
+        if not ollama_ok:
+            return {"sucesso": False, "erro": erro_ollama}
+
+        try:
+            # pyrefly: ignore [missing-import]
+            import ollama
+            
+            contexto = texto_processo[:12000] if len(texto_processo) > 12000 else texto_processo
+            
+            system_prompt = """Você é um ASSESSOR TÉCNICO E PROCESSUAL ESPECIALISTA do SEI-GDF.
+Sua missão é responder à dúvida do usuário com base EXCLUSIVA E ESTRITA nos autos e documentos do processo fornecido.
+
+DIRETRIZES:
+1. Responda com clareza, objetividade e riqueza de detalhes reais dos autos (cite datas, números SEI de documentos, nomes de servidores e setores).
+2. Se a informação solicitada NÃO constar nos autos fornecidos, declare com sinceridade que a informação não foi localizada nos documentos disponíveis.
+3. Não faça suposições e não invente dados."""
+
+            user_prompt = f"""--- AUTOS DO PROCESSO SEI ---
+{contexto}
+--- FIM DOS AUTOS ---
+
+Pergunta do Assessor: {pergunta}
+
+Responda fundamentando-se nos documentos acima:"""
+
+            resposta = ollama.chat(model='gemma4', messages=[
+                {'role': 'system', 'content': system_prompt},
+                {'role': 'user', 'content': user_prompt}
+            ], options={'temperature': 0.2, 'top_p': 0.9}, stream=True)
+            
+            conteudo_ia = ""
+            for chunk in resposta:
+                if 'message' in chunk and 'content' in chunk['message']:
+                    conteudo_ia += chunk['message']['content']
+                    if stream_callback:
+                        stream_callback(conteudo_ia)
+                        
+            conteudo_ia_limpo = conteudo_ia.strip()
+            match_think = re.search(r'<think>.*?</think>', conteudo_ia_limpo, flags=re.DOTALL)
+            if match_think:
+                conteudo_ia_limpo = conteudo_ia_limpo.replace(match_think.group(0), "").strip()
+            elif "<think>" in conteudo_ia_limpo:
+                conteudo_ia_limpo = re.sub(r'<think>.*', '', conteudo_ia_limpo, flags=re.DOTALL).strip()
+                
+            return {"sucesso": True, "texto_gerado": conteudo_ia_limpo}
+        except Exception as e:
+            logger.error(f"Erro ao responder sobre processo: {e}", exc_info=True)
+            return {"sucesso": False, "erro": str(e)}
+
+    def processar_lote_processos(self, parent_folder: str, progress_callback=None) -> Tuple[List[Dict[str, Any]], str]:
+        """
+        Processa múltiplos processos (subpastas, arquivos .zip ou .pdf) e gera uma tabela de triagem em lote.
+        """
+        ollama_ok, erro_ollama = self._verificar_ollama()
+        if not ollama_ok:
+            return [], erro_ollama
+            
+        try:
+            # pyrefly: ignore [missing-import]
+            import ollama
+            
+            itens = []
+            for entry in os.scandir(parent_folder):
+                if entry.is_dir():
+                    itens.append(entry.path)
+                elif entry.is_file() and entry.name.lower().endswith(('.zip', '.pdf')):
+                    itens.append(entry.path)
+                    
+            if not itens:
+                itens = [parent_folder]
+                
+            total = len(itens)
+            resultados = []
+            
+            for idx, item_path in enumerate(itens):
+                nome_alvo = os.path.basename(item_path)
+                if progress_callback:
+                    progress_callback(idx + 1, total, nome_alvo)
+                    
+                texto, _ = self.extrair_texto_de_alvo(item_path)
+                if not texto:
+                    resultados.append({
+                        "arquivo": nome_alvo,
+                        "processo": "Não identificado",
+                        "interessado": "Não identificado",
+                        "assunto": "Arquivo vazio ou ilegível",
+                        "prazo": "-",
+                        "prioridade": "Normal",
+                        "encaminhamento": "Verificar arquivo",
+                        "resumo": "Nenhum texto extraível encontrado."
+                    })
+                    continue
+                    
+                contexto_amostra = texto[:4000] + "\n...\n" + texto[-4000:] if len(texto) > 8000 else texto
+                
+                prompt_triagem = f"""Você é um triador do SEI do Governo do Distrito Federal.
+Analise os documentos do processo abaixo e extraia os metadados no formato estritamente JSON.
+
+Documento:
+{contexto_amostra}
+
+Responda APENAS com um objeto JSON válido contendo exatamente estas chaves:
+{{
+  "processo": "número do processo SEI se encontrado ou 'S/N'",
+  "interessado": "nome do cidadão, requerente ou órgão",
+  "assunto": "assunto resumido em até 8 palavras",
+  "prazo": "data do prazo ou 'Sem prazo'",
+  "prioridade": "Urgente, Alta ou Normal",
+  "encaminhamento": "sugestão de setor (ex: Suban, Gabinete, Ouvidoria, HVeP)",
+  "resumo": "síntese em até 2 frases da situação do processo"
+}}"""
+
+                try:
+                    res = ollama.chat(
+                        model='gemma4',
+                        messages=[{'role': 'user', 'content': prompt_triagem}],
+                        options={'temperature': 0.1, 'top_p': 0.9}
+                    )
+                    raw_resp = res.get('message', {}).get('content', '').strip()
+                    raw_resp = re.sub(r'^```(?:json)?\s*', '', raw_resp, flags=re.IGNORECASE)
+                    raw_resp = re.sub(r'\s*```$', '', raw_resp)
+                    match_json = re.search(r'\{.*\}', raw_resp, flags=re.DOTALL)
+                    if match_json:
+                        dados = json.loads(match_json.group(0))
+                        dados["arquivo"] = nome_alvo
+                        resultados.append(dados)
+                    else:
+                        resultados.append({
+                            "arquivo": nome_alvo,
+                            "processo": "Identificado",
+                            "interessado": "Cidadão/Órgão",
+                            "assunto": "Demanda Geral",
+                            "prazo": "Normal",
+                            "prioridade": "Normal",
+                            "encaminhamento": "Gabinete",
+                            "resumo": raw_resp[:150]
+                        })
+                except Exception as e:
+                    resultados.append({
+                        "arquivo": nome_alvo,
+                        "processo": "-",
+                        "interessado": "-",
+                        "assunto": f"Erro IA: {str(e)[:40]}",
+                        "prazo": "-",
+                        "prioridade": "Normal",
+                        "encaminhamento": "-",
+                        "resumo": "Falha na análise automática"
+                    })
+                    
+            return resultados, ""
+        except Exception as e:
+            logger.error(f"Erro em processar_lote_processos: {e}", exc_info=True)
+            return [], str(e)
+
+    def exportar_lote_csv(self, lista_processos: List[Dict[str, Any]], filepath: str) -> Tuple[bool, str]:
+        """Exporta lista de triagem de processos para formato CSV / Excel."""
+        try:
+            import csv
+            with open(filepath, 'w', newline='', encoding='utf-8-sig') as f:
+                writer = csv.writer(f, delimiter=';')
+                writer.writerow(["Arquivo", "Processo SEI", "Interessado", "Assunto", "Prazo", "Prioridade", "Encaminhamento", "Resumo"])
+                for item in lista_processos:
+                    writer.writerow([
+                        item.get("arquivo", ""),
+                        item.get("processo", ""),
+                        item.get("interessado", ""),
+                        item.get("assunto", ""),
+                        item.get("prazo", ""),
+                        item.get("prioridade", ""),
+                        item.get("encaminhamento", ""),
+                        item.get("resumo", "")
+                    ])
+            return True, ""
+        except Exception as e:
+            return False, str(e)
 
     def refinar_texto_com_ia(self, texto_atual: str, instrucao: str, stream_callback=None) -> Dict[str, Any]:
         """Usa o Ollama para refinar um texto existente baseado nas instruções do usuário."""

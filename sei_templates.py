@@ -49,3 +49,84 @@ Trata-se do Ofício nº {NUM_OFICIO} - CACI/GAB/OUVIDORIA ({SEI_OFICIO}) por mei
 
 Encaminho os autos para conhecimento e providências, com a brevidade que o assunto requer, considerando que o prazo de resposta a Secretaria Executiva é, impreterivelmente, {PRAZO}, conforme Art. 5º, da LEI Nº 4.896, DE 31 DE JULHO DE 2012.
 """
+
+MOLDE_RESUMO_EXECUTIVO = """================================================================================
+                    RESUMO EXECUTIVO DO PROCESSO SEI
+================================================================================
+
+1. IDENTIFICAÇÃO DO PROCESSO
+• Processo SEI nº: {PROCESSO_NUM}
+• Interessado / Demandante: {INTERESSADO}
+• Documento de Origem / Protocolo: {ORIGEM_PROTOCOLO}
+• Assunto Geral: {ASSUNTO}
+
+2. OBJETO DA DEMANDA / SÍNTESE DO PEDIDO
+{OBJETO}
+
+3. HISTÓRICO E TRAMITAÇÃO DOS FATOS
+{HISTORICO}
+
+4. PONTOS TÉCNICOS E JURÍDICOS RELEVANTES
+{PONTOS_TECNICOS}
+
+5. SITUAÇÃO ATUAL, PRAZOS E PRÓXIMAS ETAPAS
+• Status Atual: {STATUS_ATUAL}
+• Prazos Aplicáveis: {PRAZOS}
+• Encaminhamento / Providência Sugerida: {ENCAMINHAMENTO}
+================================================================================"""
+
+MOLDE_LINHA_TEMPO = """================================================================================
+                 LINHA DO TEMPO / CRONOLOGIA DO PROCESSO SEI
+================================================================================
+
+PROCESSO Nº: {PROCESSO_NUM}
+INTERESSADO: {INTERESSADO}
+ASSUNTO: {ASSUNTO}
+
+--------------------------------------------------------------------------------
+ORDEM CRONOLÓGICA DE ATOS E DOCUMENTOS
+--------------------------------------------------------------------------------
+
+{EVENTOS_CRONOLOGICOS}
+
+--------------------------------------------------------------------------------
+RESUMO DA FASE ATUAL:
+• Último Documento / Despacho: {ULTIMO_ATO}
+• Unidade Atual com Carga: {UNIDADE_ATUAL}
+• Próxima Ação Necessária: {PROXIMA_ACAO}
+================================================================================"""
+
+MOLDE_AUDITORIA_CONFORMIDADE = """================================================================================
+           RELATÓRIO DE AUDITORIA, PRAZOS E CONFORMIDADE SEI
+================================================================================
+
+1. DADOS DE IDENTIFICAÇÃO
+• Processo SEI: {PROCESSO_NUM}
+• Interessado: {INTERESSADO}
+• Documento de Abertura: {ORIGEM_PROTOCOLO}
+• Data de Autuação / Entrada: {DATA_ENTRADA}
+
+2. AUDITORIA DE PRAZOS LEGAIS E ADMINISTRATIVOS
+• Prazo Aplicável: {REGRA_PRAZO}
+• Data Limite / Vencimento: {DATA_LIMITE}
+• Situação Atual do Prazo: {STATUS_TEMPESTIVIDADE}
+• Dias Restantes / Dias em Atraso: {CONTAGEM_DIAS}
+
+3. CHECKLIST DE ATENDIMENTO INTEGRAL À DEMANDA
+• Questionamentos / Pedidos do Cidadão ou Órgão:
+{LISTA_PEDIDOS}
+• Respostas Prestadas pelas Áreas Técnicas:
+{LISTA_RESPOSTAS}
+• Diagnóstico de Atendimento: {DIAGNOSTICO_RESPOSTA}
+
+4. CONFORMIDADE COM NORMAS DE REDAÇÃO OFICIAL GDF
+• Numeração de Parágrafos: {CHECK_NUMERACAO}
+• Impessoalidade (sem 1ª pessoa): {CHECK_IMPESSOALIDADE}
+• Nomenclatura Padrão (ex: Serviço Veterinário Público / HVeP, Sepan, Suban): {CHECK_NOMENCLATURA}
+• Ausência de Blocos de Assinatura Fictícia: {CHECK_ASSINATURA}
+
+5. RECOMENDAÇÃO FINAL DA ASSESSORIA
+{RECOMENDACAO_FINAL}
+================================================================================"""
+
+
