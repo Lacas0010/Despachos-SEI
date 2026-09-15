@@ -636,6 +636,15 @@ class SEIEngine:
         Processa todos os documentos de um processo SEI (pasta, .zip ou arquivo),
         busca exemplos no banco de vetores e gera resposta com Ollama (Local).
         """
+        extracted_text, target_name = self.extrair_texto_de_alvo(folderpath)
+        if not extracted_text.strip():
+            return {"sucesso": False, "erro": "Nenhum texto extraível foi encontrado no processo selecionado (Podem ser arquivos sem OCR ou formato não suportado)."}
+        return self.analisar_processo_direto(extracted_text, nome_processo=target_name, molde_ia=molde_ia, stream_callback=stream_callback)
+
+    def analisar_processo_direto(self, texto_processo: str, nome_processo: str = "Processo", molde_ia: str = "AUTO", stream_callback=None) -> Dict[str, Any]:
+        """
+        Analisa diretamente o texto em memória do processo com o molde solicitado e Ollama.
+        """
         # Verifica se o Ollama está online antes de começar
         ollama_ok, erro_ollama = self._verificar_ollama()
         if not ollama_ok:
@@ -652,11 +661,11 @@ class SEIEngine:
             except ImportError as e:
                 return {"sucesso": False, "erro": f"Erro de dependência ({str(e)}). Execute 'pip install ollama' no terminal."}
             
-            # 1. Extração unificada de texto (suporta Pastas, ZIPs e arquivos únicos)
-            extracted_text, target_name = self.extrair_texto_de_alvo(folderpath)
+            extracted_text = texto_processo.strip()
+            target_name = nome_processo
             
-            if not extracted_text.strip():
-                return {"sucesso": False, "erro": "Nenhum texto extraível foi encontrado no processo selecionado (Podem ser arquivos sem OCR ou formato não suportado)."}
+            if not extracted_text:
+                return {"sucesso": False, "erro": "O texto do processo está vazio."}
 
             # Extrai o Assunto prioritariamente do Despacho da ASSESP (faz isso antes de truncar o texto)
             assunto_match = re.search(r'Despacho - SEPAN/GAB/ASSESP.*?Assunto:\s*([^\n]+)', extracted_text, re.IGNORECASE | re.DOTALL)

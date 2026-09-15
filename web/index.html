@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gerador SEI - Suíte de Análise e Redação Oficial</title>
+  
+  <!-- Fonts: Plus Jakarta Sans & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- Marked.js for Markdown parsing -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div id="app" class="app-container">
+    
+    <!-- Top Navigation Header -->
+    <header class="app-header">
+      <div class="header-left">
+        <div class="brand-logo">
+          <div class="logo-icon"><i data-lucide="zap"></i></div>
+          <div class="brand-text">
+            <span class="brand-title">Gerador SEI</span>
+            <span class="brand-badge">IA Oficial 2.0</span>
+          </div>
+        </div>
+        
+        <div id="active-process-badge" class="active-process-pill hidden">
+          <i data-lucide="folder-check"></i>
+          <span id="active-process-name" class="process-name-text">Nenhum processo carregado</span>
+          <button id="btn-clear-active" class="btn-icon-xs" title="Descarregar processo"><i data-lucide="x"></i></button>
+        </div>
+      </div>
+      
+      <div class="header-right">
+        <div id="ollama-status" class="status-pill status-checking" title="Conexão com a Inteligência Artificial Local">
+          <span class="status-dot"></span>
+          <span id="ollama-status-text">Verificando IA...</span>
+        </div>
+        
+        <button id="btn-theme-toggle" class="btn-icon" title="Alternar Modo Claro/Escuro (T)">
+          <i data-lucide="sun" class="sun-icon"></i>
+          <i data-lucide="moon" class="moon-icon"></i>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Workspace (Sidebar + Document Area) -->
+    <main class="app-workspace">
+      
+      <!-- Left Sidebar (Tabs: Assistente / Lote / Histórico / RAG) -->
+      <aside class="sidebar-container">
+        <!-- Sidebar Navigation Tabs -->
+        <nav class="sidebar-nav">
+          <button class="nav-tab active" data-tab="tab-assistente">
+            <i data-lucide="bot"></i>
+            <span>Assistente</span>
+          </button>
+          <button class="nav-tab" data-tab="tab-lote">
+            <i data-lucide="layers"></i>
+            <span>Triagem em Lote</span>
+          </button>
+          <button class="nav-tab" data-tab="tab-historico">
+            <i data-lucide="history"></i>
+            <span>Histórico</span>
+          </button>
+        </nav>
+
+        <!-- Tab 1: Assistente & Chat -->
+        <div id="tab-assistente" class="tab-pane active">
+          
+          <!-- Dropzone / File Loader -->
+          <div id="dropzone" class="file-dropzone">
+            <input type="file" id="file-input" accept=".zip,.pdf,.docx,.txt,.html,.htm" hidden>
+            <div class="dropzone-content">
+              <div class="dropzone-icon"><i data-lucide="upload-cloud"></i></div>
+              <div class="dropzone-text">
+                <strong>Arraste o processo aqui</strong>
+                <span>ou clique para selecionar (.zip, .pdf, .docx)</span>
+              </div>
+            </div>
+            <div id="upload-progress" class="upload-progress-bar hidden">
+              <div class="progress-fill"></div>
+            </div>
+          </div>
+
+          <!-- Controls: Molde + Action Button -->
+          <div class="generator-controls">
+            <div class="input-group">
+              <label for="select-molde"><i data-lucide="file-text"></i> Molde de Análise:</label>
+              <div class="select-wrapper">
+                <select id="select-molde" class="custom-select">
+                  <option value="AUTO" selected>🤖 Automático (Identificar)</option>
+                  <option value="RESUMÃO">⚡ Resumão Executivo do Processo</option>
+                  <option value="LINHA DO TEMPO">⏳ Linha do Tempo & Cronologia</option>
+                  <option value="AUDITORIA">⚖️ Auditoria, Prazos e Conformidade</option>
+                  <option value="OUVIDORIA MINUTA">📋 Minuta de Ouvidoria</option>
+                  <option value="OUVIDORIA SUBAN">📋 Ouvidoria à Suban</option>
+                  <option value="OUVIDORIA ELOGIO">🌟 Ouvidoria - Elogio</option>
+                  <option value="DILACAO">⏱️ Dilação de Prazo</option>
+                  <option value="GENERICO">📝 Despacho Genérico GDF</option>
+                </select>
+              </div>
+            </div>
+
+            <button id="btn-gerar-analise" class="btn btn-primary btn-block">
+              <i data-lucide="sparkles"></i>
+              <span>Gerar Análise / Minuta</span>
+            </button>
+          </div>
+
+          <!-- Chat Section -->
+          <div class="chat-section">
+            <div class="chat-header">
+              <div class="chat-title">
+                <i data-lucide="message-square"></i>
+                <span>Dúvidas & Refinamento</span>
+              </div>
+              <div class="chat-modes">
+                <button class="mode-pill active" data-mode="Auto" title="A IA decide se responde dos autos ou refina">Auto</button>
+                <button class="mode-pill" data-mode="Autos" title="Pergunta estrita sobre os documentos">Autos</button>
+                <button class="mode-pill" data-mode="Refinar" title="Alterar o documento gerado">Refinar</button>
+              </div>
+            </div>
+
+            <div id="chat-messages" class="chat-messages-container">
+              <div class="chat-welcome">
+                <div class="welcome-icon"><i data-lucide="sparkles"></i></div>
+                <p>Carregue um processo para gerar o <strong>Resumão</strong>, <strong>Linha do Tempo</strong> ou <strong>Despachos</strong>. Você também pode tirar dúvidas sobre os autos aqui!</p>
+              </div>
+            </div>
+
+            <div class="chat-input-wrapper">
+              <textarea id="chat-input" placeholder="Faça uma pergunta sobre o processo ou peça alterações..." rows="1"></textarea>
+              <button id="btn-send-chat" class="btn-send" title="Enviar mensagem (Ctrl+Enter)">
+                <i data-lucide="arrow-up"></i>
+              </button>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Tab 2: Triagem em Lote -->
+        <div id="tab-lote" class="tab-pane">
+          <div class="lote-panel">
+            <div class="lote-header">
+              <h3>Triagem em Lote</h3>
+              <p>Envie um arquivo <code>.zip</code> com múltiplos processos para classificar prazos e prioridades de uma só vez.</p>
+            </div>
+
+            <div id="lote-dropzone" class="file-dropzone">
+              <input type="file" id="lote-file-input" accept=".zip" hidden>
+              <div class="dropzone-content">
+                <div class="dropzone-icon"><i data-lucide="package"></i></div>
+                <div class="dropzone-text">
+                  <strong>Arraste o arquivo ZIP de processos</strong>
+                  <span>ou clique para selecionar</span>
+                </div>
+              </div>
+            </div>
+
+            <div id="lote-status-container" class="lote-status-box hidden">
+              <div class="spinner-sm"></div>
+              <span id="lote-status-msg">Processando processos...</span>
+            </div>
+
+            <div id="lote-results-list" class="lote-cards-container">
+              <div class="empty-state">
+                <i data-lucide="inbox"></i>
+                <span>Nenhuma triagem em lote executada.</span>
+              </div>
+            </div>
+
+            <button id="btn-export-lote-csv" class="btn btn-secondary btn-block hidden">
+              <i data-lucide="download"></i>
+              <span>Baixar Planilha CSV</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Tab 3: Histórico -->
+        <div id="tab-historico" class="tab-pane">
+          <div class="historico-panel">
+            <div class="search-box">
+              <i data-lucide="search"></i>
+              <input type="text" id="historico-search" placeholder="Buscar no histórico por assunto ou texto...">
+            </div>
+
+            <div id="historico-list" class="historico-list-container">
+              <div class="loading-state"><div class="spinner-sm"></div> Carregando histórico...</div>
+            </div>
+
+            <!-- Selected Item Action Bar -->
+            <div id="hist-detail-actions" class="hist-actions-bar hidden">
+              <div class="hist-selected-title" id="hist-selected-title">Nenhum item selecionado</div>
+              <div class="hist-btn-grid">
+                <button id="btn-hist-load" class="btn btn-primary btn-sm" title="Carregar na área central">
+                  <i data-lucide="file-output"></i> Carregar
+                </button>
+                <button id="btn-hist-chat" class="btn btn-secondary btn-sm" title="Ativar para perguntas no chat">
+                  <i data-lucide="message-square"></i> Perguntar
+                </button>
+                <button id="btn-hist-copy-sei" class="btn btn-secondary btn-sm" title="Copiar formatado para o SEI">
+                  <i data-lucide="copy"></i> Copiar SEI
+                </button>
+                <button id="btn-hist-del" class="btn btn-danger-outline btn-sm" title="Excluir do histórico">
+                  <i data-lucide="trash-2"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </aside>
+
+      <!-- Main Editor / Preview Workspace -->
+      <section class="main-workspace">
+        
+        <!-- Document Action Toolbar -->
+        <div class="doc-toolbar">
+          <div class="doc-tabs">
+            <button class="doc-tab active" data-view="formatted"><i data-lucide="eye"></i> Visualização Formatada</button>
+            <button class="doc-tab" data-view="editor"><i data-lucide="edit-3"></i> Editor Markdown</button>
+            <button class="doc-tab" data-view="autos"><i data-lucide="file-text"></i> Autos Originais</button>
+          </div>
+
+          <div class="doc-actions">
+            <button id="btn-copy-sei" class="btn btn-primary btn-glow" title="Copia com tipografia oficial do SEI">
+              <i data-lucide="clipboard-check"></i>
+              <span>Copiar p/ SEI</span>
+            </button>
+            
+            <button id="btn-copy-plain" class="btn btn-outline" title="Copiar texto puro">
+              <i data-lucide="copy"></i>
+              <span>Texto</span>
+            </button>
+
+            <button id="btn-export-docx" class="btn btn-outline" title="Exportar Documento Word (.docx)">
+              <i data-lucide="file-text"></i>
+              <span>Word</span>
+            </button>
+
+            <button id="btn-export-pdf" class="btn btn-outline" title="Exportar PDF Oficial">
+              <i data-lucide="file-down"></i>
+              <span>PDF</span>
+            </button>
+
+            <button id="btn-clear-doc" class="btn btn-icon" title="Limpar Documento">
+              <i data-lucide="trash"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Document Views Container -->
+        <div class="doc-view-container">
+          
+          <!-- 1. Formatted View (SEI HTML & Markdown Rendered) -->
+          <div id="view-formatted" class="view-pane active">
+            <div id="doc-render-content" class="sei-paper">
+              <div class="empty-doc-placeholder">
+                <i data-lucide="file-signature"></i>
+                <h2>Área de Documento & Análise</h2>
+                <p>Arraste um processo no painel à esquerda ou selecione um item no <strong>Histórico</strong> para começar.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- 2. Markdown Raw Editor -->
+          <div id="view-editor" class="view-pane">
+            <textarea id="doc-raw-editor" class="raw-editor" placeholder="Escreva ou edite o documento em Markdown aqui..."></textarea>
+          </div>
+
+          <!-- 3. Original Process Autos View -->
+          <div id="view-autos" class="view-pane">
+            <div class="autos-inspector">
+              <div class="autos-info-bar">
+                <span id="autos-info-text">Nenhum processo carregado</span>
+              </div>
+              <textarea id="autos-raw-content" class="autos-content-display" readonly placeholder="O texto integral extraído dos autos do processo aparecerá aqui para consulta..."></textarea>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Bottom Status Bar -->
+        <footer class="app-status-bar">
+          <div class="status-left">
+            <span class="pulse-indicator"></span>
+            <span id="app-status-message">Pronto.</span>
+          </div>
+          <div class="status-right">
+            <span id="doc-stats">0 palavras | 0 caracteres</span>
+          </div>
+        </footer>
+
+      </section>
+
+    </main>
+
+    <!-- Global Toast Notifications -->
+    <div id="toast-container" class="toast-container"></div>
+
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
