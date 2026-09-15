@@ -80,6 +80,10 @@ class ExportCSVRequest(BaseModel):
     nome_arquivo: Optional[str] = "triagem_lote.csv"
 
 
+class SelecionarModeloRequest(BaseModel):
+    modelo: str
+
+
 # --- Status & Healthcheck ---
 @app.get("/api/status")
 def get_status():
@@ -90,9 +94,9 @@ def get_status():
         import ollama
         resp = ollama.list()
         if hasattr(resp, "models"):
-            modelos_ollama = [m.model for m in resp.models]
+            modelos_ollama = [m.model for m in resp.models if "embed" not in m.model]
         elif isinstance(resp, dict) and "models" in resp:
-            modelos_ollama = [m.get("name", "") for m in resp["models"]]
+            modelos_ollama = [m.get("name", "") for m in resp["models"] if "embed" not in m.get("name", "")]
         ollama_ok = True
     except Exception as e:
         logger.warning(f"Ollama offline ou indisponível: {e}")
@@ -107,13 +111,136 @@ def get_status():
         "status": "online",
         "ollama_conectado": ollama_ok,
         "modelos_ollama": modelos_ollama,
-        "modelo_ativo": getattr(engine, "model_name", "gemma4"),
+        "modelo_ativo": getattr(engine, "model_name", "llama3.2"),
         "rag_documentos": rag_count,
         "moldes": moldes_disponiveis
     }
 
 
-# --- Upload de Processos (Dossiê) ---
+@app.get("/api/modelos")
+def get_modelos():
+    """Lista todos os modelos de IA instalados no Ollama e o modelo ativo."""
+    modelos = []
+    try:
+        import ollama
+        resp = ollama.list()
+        if hasattr(resp, "models"):
+            modelos = [m.model for m in resp.models if "embed" not in m.model]
+        elif isinstance(resp, dict) and "models" in resp:
+            modelos = [m.get("name", "") for m in resp["models"] if "embed" not in m.get("name", "")]
+    except Exception as e:
+        logger.warning(f"Erro ao listar modelos: {e}")
+
+    return {
+        "modelos": modelos,
+        "modelo_ativo": getattr(engine, "model_name", "llama3.2")
+    }
+
+
+@app.post("/api/selecionar-modelo")
+def selecionar_modelo(req: SelecionarModeloRequest):
+    """Altera o modelo de IA ativo e persiste no config.json."""
+    novo_modelo = req.modelo.strip()
+    if not novo_modelo:
+        raise HTTPException(status_code=400, detail="Nome do modelo não pode ser vazio.")
+
+    # Remove tag :latest se presente para consistência
+    clean_model = novo_modelo.split(":")[0] if ":" in novo_modelo else novo_modelo
+    engine.model_name = clean_model
+
+    try:
+        cfg = {}
+        if os.path.exists("config.json"):
+            with open("config.json", "r", encoding="utf-8") as f:
+                cfg = json.load(f)
+        cfg["modelo_ia"] = clean_model
+        with open("config.json", "w", encoding="utf-8") as f:
+            json.dump(cfg, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logger.error(f"Erro ao salvar config.json: {e}")
+
+    logger.info(f"Modelo de IA alterado para: {clean_model}")
+    return {"sucesso": True, "modelo_ativo": clean_model}
+
+
+# --- Upload e Seleção de Processos (Pasta / Dossiê / Arquivo) ---
+@app.post("/api/selecionar-pasta-local")
+def selecionar_pasta_local():
+    """Abre o diálogo nativo do Windows para selecionar uma pasta de processo usando subprocesso isolado."""
+    import subprocess
+    import sys
+    
+    script = (
+        "import sys, tkinter as tk, tkinter.filedialog as fd; "
+        "r = tk.Tk(); r.withdraw(); r.attributes('-topmost', True); "
+        "res = fd.askdirectory(title='Selecione a pasta do processo SEI'); "
+        "r.destroy(); "
+        "sys.stdout.reconfigure(encoding='utf-8') if hasattr(sys.stdout, 'reconfigure') else None; "
+        "print(res or '')"
+    )
+    try:
+        raw_out = subprocess.check_output([sys.executable, "-c", script])
+        folder_selected = raw_out.decode("utf-8", errors="replace").strip()
+    except Exception as e:
+        logger.error(f"Erro ao abrir diálogo de pasta: {e}")
+        return {"sucesso": False, "erro": str(e)}
+
+    if not folder_selected:
+        return {"sucesso": False, "cancelado": True}
+
+    texto_extraido, nome_proc = engine.extrair_texto_de_alvo(folder_selected)
+    if not texto_extraido or len(texto_extraido.strip()) == 0:
+        raise HTTPException(status_code=400, detail="Nenhum texto extraível foi encontrado na pasta selecionada (arquivos vazios ou imagens sem OCR).")
+
+    return {
+        "sucesso": True,
+        "caminho_pasta": folder_selected,
+        "nome_processo": nome_proc or os.path.basename(folder_selected),
+        "tamanho_caracteres": len(texto_extraido),
+        "texto_processo": texto_extraido,
+        "resumo_inicial": texto_extraido[:600] + "..." if len(texto_extraido) > 600 else texto_extraido
+    }
+
+
+@app.post("/api/selecionar-arquivo-local")
+def selecionar_arquivo_local():
+    """Abre o diálogo nativo do Windows para selecionar um arquivo (.zip, .pdf, .docx) usando subprocesso isolado."""
+    import subprocess
+    import sys
+    
+    script = (
+        "import sys, tkinter as tk, tkinter.filedialog as fd; "
+        "r = tk.Tk(); r.withdraw(); r.attributes('-topmost', True); "
+        "types = [('Arquivos de Processo', '*.zip;*.pdf;*.docx;*.txt;*.html;*.htm'), ('Todos os Arquivos', '*.*')]; "
+        "res = fd.askopenfilename(title='Selecione o arquivo do processo', filetypes=types); "
+        "r.destroy(); "
+        "sys.stdout.reconfigure(encoding='utf-8') if hasattr(sys.stdout, 'reconfigure') else None; "
+        "print(res or '')"
+    )
+    try:
+        raw_out = subprocess.check_output([sys.executable, "-c", script])
+        file_selected = raw_out.decode("utf-8", errors="replace").strip()
+    except Exception as e:
+        logger.error(f"Erro ao abrir diálogo de arquivo: {e}")
+        return {"sucesso": False, "erro": str(e)}
+
+    if not file_selected:
+        return {"sucesso": False, "cancelado": True}
+
+    texto_extraido, nome_proc = engine.extrair_texto_de_alvo(file_selected)
+    if not texto_extraido or len(texto_extraido.strip()) == 0:
+        raise HTTPException(status_code=400, detail="Nenhum texto extraível foi encontrado no arquivo selecionado (se for PDF, verifique se possui camada de texto).")
+
+    return {
+        "sucesso": True,
+        "caminho_arquivo": file_selected,
+        "nome_processo": nome_proc or os.path.basename(file_selected),
+        "tamanho_caracteres": len(texto_extraido),
+        "texto_processo": texto_extraido,
+        "resumo_inicial": texto_extraido[:600] + "..." if len(texto_extraido) > 600 else texto_extraido
+    }
+
+
 @app.post("/api/upload-processo")
 async def upload_processo(file: UploadFile = File(...)):
     """Recebe um arquivo (.zip, .pdf, .docx, .html, .txt) e extrai o texto integral dos autos."""
@@ -128,17 +255,23 @@ async def upload_processo(file: UploadFile = File(...)):
     try:
         texto_extraido, nome_proc = engine.extrair_texto_de_alvo(tmp_path)
         if not texto_extraido or len(texto_extraido.strip()) == 0:
-            raise HTTPException(status_code=400, detail="Não foi possível extrair texto do arquivo enviado.")
+            raise HTTPException(
+                status_code=400, 
+                detail="Não foi possível extrair texto do arquivo enviado. Se for um PDF digitalizado/escaneado (imagem), certifique-se de que ele possui camada de texto (OCR)."
+            )
             
+        display_name = filename if filename else (nome_proc or "Processo")
         return {
             "sucesso": True,
-            "nome_processo": nome_proc or filename,
+            "nome_processo": display_name,
             "tamanho_caracteres": len(texto_extraido),
             "texto_processo": texto_extraido,
             "resumo_inicial": texto_extraido[:600] + "..." if len(texto_extraido) > 600 else texto_extraido
         }
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Erro ao extrair arquivo {filename}: {e}")
+        logger.error(f"Erro ao extrair arquivo {filename}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Erro ao processar arquivo: {str(e)}")
     finally:
         if os.path.exists(tmp_path):
@@ -148,6 +281,70 @@ async def upload_processo(file: UploadFile = File(...)):
                 pass
 
 
+@app.post("/api/upload-pasta-multipla")
+async def upload_pasta_multipla(files: List[UploadFile] = File(...)):
+    """Recebe múltiplos arquivos enviados via pasta (webkitdirectory ou drag-and-drop de pasta)."""
+    if not files:
+        raise HTTPException(status_code=400, detail="Nenhum arquivo enviado.")
+        
+    with tempfile.TemporaryDirectory() as tmpdir:
+        salvos = 0
+        for f in files:
+            safe_rel_path = (f.filename or "doc.txt").replace("\\", "/").lstrip("/")
+            if not safe_rel_path:
+                safe_rel_path = f"doc_{salvos}.bin"
+            full_target = os.path.join(tmpdir, safe_rel_path)
+            os.makedirs(os.path.dirname(full_target), exist_ok=True)
+            with open(full_target, "wb") as out_f:
+                out_f.write(await f.read())
+            salvos += 1
+                
+        texto_extraido, nome_proc = engine.extrair_texto_de_alvo(tmpdir)
+        if not texto_extraido or len(texto_extraido.strip()) == 0:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"{salvos} arquivo(s) recebido(s), mas nenhum texto extraível foi encontrado. Verifique se os documentos (.pdf, .docx, .html, .txt) possuem texto digital."
+            )
+            
+        pasta_raiz = files[0].filename.split("/")[0] if "/" in (files[0].filename or "") else (nome_proc or "Pasta do Processo")
+        
+        return {
+            "sucesso": True,
+            "nome_processo": pasta_raiz,
+            "tamanho_caracteres": len(texto_extraido),
+            "texto_processo": texto_extraido,
+            "resumo_inicial": texto_extraido[:600] + "..." if len(texto_extraido) > 600 else texto_extraido
+        }
+
+
+# --- Gerenciamento de Cancelamento de IA ---
+active_cancellations = set()
+cancel_lock = threading.Lock()
+
+
+def register_cancellation_event() -> threading.Event:
+    ev = threading.Event()
+    with cancel_lock:
+        active_cancellations.add(ev)
+    return ev
+
+
+def unregister_cancellation_event(ev: threading.Event):
+    with cancel_lock:
+        active_cancellations.discard(ev)
+
+
+@app.post("/api/cancelar-ia")
+def cancelar_ia():
+    """Cancela imediatamente todos os processos ativos de IA em andamento."""
+    logger.info("Solicitação de cancelamento de IA recebida via API.")
+    with cancel_lock:
+        total = len(active_cancellations)
+        for ev in list(active_cancellations):
+            ev.set()
+    return {"sucesso": True, "mensagem": f"Comando de cancelamento enviado ({total} processo(s) afetado(s))."}
+
+
 # --- Streaming SSE: Análise do Processo com Molde ---
 @app.post("/api/analisar-stream")
 def analisar_processo_stream(req: AnaliseRequest):
@@ -155,10 +352,14 @@ def analisar_processo_stream(req: AnaliseRequest):
     def event_generator():
         token_queue = queue.Queue()
         done_event = threading.Event()
+        cancel_event = register_cancellation_event()
         resultado_final = {}
 
         def stream_cb(full_text):
+            if cancel_event.is_set():
+                return False
             token_queue.put({"type": "stream", "full_text": full_text})
+            return True
 
         def worker():
             try:
@@ -166,7 +367,8 @@ def analisar_processo_stream(req: AnaliseRequest):
                     texto_processo=req.texto_processo,
                     nome_processo=req.nome_processo,
                     molde_ia=req.molde,
-                    stream_callback=stream_cb
+                    stream_callback=stream_cb,
+                    cancel_event=cancel_event
                 )
                 resultado_final.update(res)
             except Exception as e:
@@ -177,40 +379,55 @@ def analisar_processo_stream(req: AnaliseRequest):
         t = threading.Thread(target=worker, daemon=True)
         t.start()
 
-        while not done_event.is_set() or not token_queue.empty():
-            try:
-                item = token_queue.get(timeout=0.08)
-                yield f"data: {json.dumps(item, ensure_ascii=False)}\n\n"
-            except queue.Empty:
-                continue
+        try:
+            while not done_event.is_set() or not token_queue.empty():
+                if cancel_event.is_set():
+                    break
+                try:
+                    item = token_queue.get(timeout=0.08)
+                    yield f"data: {json.dumps(item, ensure_ascii=False)}\n\n"
+                except queue.Empty:
+                    continue
 
-        # Processamento final e salvamento no histórico
-        if resultado_final.get("sucesso"):
-            tipo_doc = resultado_final.get("tipo_documento", req.molde)
-            texto_gerado = resultado_final.get("texto_gerado", "")
-            subject = f"[{tipo_doc}] {resultado_final.get('resumo', req.nome_processo)}"
-            hist_id = engine.save_to_history(
-                doc_type=tipo_doc,
-                subject=subject,
-                full_text=texto_gerado,
-                process_context=req.texto_processo
-            )
-            done_payload = {
-                "type": "done",
-                "sucesso": True,
-                "history_id": hist_id,
-                "tipo_documento": tipo_doc,
-                "subject": subject,
-                "texto_gerado": texto_gerado
-            }
-        else:
-            done_payload = {
-                "type": "done",
-                "sucesso": False,
-                "erro": resultado_final.get("erro", "Falha na análise do processo.")
-            }
+            # Processamento final e salvamento no histórico
+            if cancel_event.is_set() or resultado_final.get("cancelado"):
+                done_payload = {
+                    "type": "done",
+                    "sucesso": False,
+                    "cancelado": True,
+                    "erro": "Geração cancelada pelo usuário."
+                }
+            elif resultado_final.get("sucesso"):
+                tipo_doc = resultado_final.get("tipo_documento", req.molde)
+                texto_gerado = resultado_final.get("texto_gerado", "")
+                raciocinio = resultado_final.get("raciocinio", "")
+                subject = f"[{tipo_doc}] {resultado_final.get('resumo', req.nome_processo)}"
+                hist_id = engine.save_to_history(
+                    doc_type=tipo_doc,
+                    subject=subject,
+                    full_text=texto_gerado,
+                    process_context=req.texto_processo,
+                    raciocinio=raciocinio
+                )
+                done_payload = {
+                    "type": "done",
+                    "sucesso": True,
+                    "history_id": hist_id,
+                    "tipo_documento": tipo_doc,
+                    "subject": subject,
+                    "texto_gerado": texto_gerado,
+                    "raciocinio": raciocinio
+                }
+            else:
+                done_payload = {
+                    "type": "done",
+                    "sucesso": False,
+                    "erro": resultado_final.get("erro", "Falha na análise do processo.")
+                }
 
-        yield f"data: {json.dumps(done_payload, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps(done_payload, ensure_ascii=False)}\n\n"
+        finally:
+            unregister_cancellation_event(cancel_event)
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
@@ -222,10 +439,14 @@ def chat_stream(req: ChatRequest):
     def event_generator():
         token_queue = queue.Queue()
         done_event = threading.Event()
+        cancel_event = register_cancellation_event()
         resultado_final = {}
 
         def stream_cb(full_text):
+            if cancel_event.is_set():
+                return False
             token_queue.put({"type": "stream", "full_text": full_text})
+            return True
 
         modo = req.modo or "Auto"
         msg = req.mensagem
@@ -233,14 +454,14 @@ def chat_stream(req: ChatRequest):
         def worker():
             try:
                 if modo == "Autos" or (modo == "Auto" and req.texto_processo and ("qual" in msg.lower() or "quem" in msg.lower() or "quando" in msg.lower() or "onde" in msg.lower() or "quanto" in msg.lower() or "?" in msg)):
-                    res = engine.responder_pergunta_sobre_processo(msg, req.texto_processo, stream_callback=stream_cb)
+                    res = engine.responder_pergunta_sobre_processo(msg, req.texto_processo, stream_callback=stream_cb, cancel_event=cancel_event)
                     res["doc_type"] = "Consulta aos Autos"
                 elif modo == "Refinar" and req.texto_atual_documento:
-                    res = engine.refinar_texto_com_ia(req.texto_atual_documento, msg, stream_callback=stream_cb)
+                    res = engine.refinar_texto_com_ia(req.texto_atual_documento, msg, stream_callback=stream_cb, cancel_event=cancel_event)
                     res["doc_type"] = "Refinamento"
                     res["is_refinement"] = True
                 else:
-                    res = engine.responder_pergunta_geral_com_ia(msg, stream_callback=stream_cb)
+                    res = engine.responder_pergunta_geral_com_ia(msg, stream_callback=stream_cb, cancel_event=cancel_event)
                     res["doc_type"] = "Pesquisa RAG"
                 resultado_final.update(res)
             except Exception as e:
@@ -251,38 +472,53 @@ def chat_stream(req: ChatRequest):
         t = threading.Thread(target=worker, daemon=True)
         t.start()
 
-        while not done_event.is_set() or not token_queue.empty():
-            try:
-                item = token_queue.get(timeout=0.08)
-                yield f"data: {json.dumps(item, ensure_ascii=False)}\n\n"
-            except queue.Empty:
-                continue
+        try:
+            while not done_event.is_set() or not token_queue.empty():
+                if cancel_event.is_set():
+                    break
+                try:
+                    item = token_queue.get(timeout=0.08)
+                    yield f"data: {json.dumps(item, ensure_ascii=False)}\n\n"
+                except queue.Empty:
+                    continue
 
-        if resultado_final.get("sucesso"):
-            tipo_doc = resultado_final.get("doc_type", "Chat")
-            texto_gerado = resultado_final.get("texto_gerado", "")
-            hist_id = engine.save_to_history(
-                doc_type=tipo_doc,
-                subject=f"[{tipo_doc}] via Chat: {msg[:25]}",
-                full_text=texto_gerado,
-                process_context=req.texto_processo or ""
-            )
-            done_payload = {
-                "type": "done",
-                "sucesso": True,
-                "history_id": hist_id,
-                "doc_type": tipo_doc,
-                "is_refinement": resultado_final.get("is_refinement", False),
-                "texto_gerado": texto_gerado
-            }
-        else:
-            done_payload = {
-                "type": "done",
-                "sucesso": False,
-                "erro": resultado_final.get("erro", "Erro no processamento da mensagem.")
-            }
+            if cancel_event.is_set() or resultado_final.get("cancelado"):
+                done_payload = {
+                    "type": "done",
+                    "sucesso": False,
+                    "cancelado": True,
+                    "erro": "Processamento cancelado pelo usuário."
+                }
+            elif resultado_final.get("sucesso"):
+                tipo_doc = resultado_final.get("doc_type", "Chat")
+                texto_gerado = resultado_final.get("texto_gerado", "")
+                raciocinio = resultado_final.get("raciocinio", "")
+                hist_id = engine.save_to_history(
+                    doc_type=tipo_doc,
+                    subject=f"[{tipo_doc}] via Chat: {msg[:25]}",
+                    full_text=texto_gerado,
+                    process_context=req.texto_processo or "",
+                    raciocinio=raciocinio
+                )
+                done_payload = {
+                    "type": "done",
+                    "sucesso": True,
+                    "history_id": hist_id,
+                    "doc_type": tipo_doc,
+                    "is_refinement": resultado_final.get("is_refinement", False),
+                    "texto_gerado": texto_gerado,
+                    "raciocinio": raciocinio
+                }
+            else:
+                done_payload = {
+                    "type": "done",
+                    "sucesso": False,
+                    "erro": resultado_final.get("erro", "Erro no processamento da mensagem.")
+                }
 
-        yield f"data: {json.dumps(done_payload, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps(done_payload, ensure_ascii=False)}\n\n"
+        finally:
+            unregister_cancellation_event(cancel_event)
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
@@ -294,14 +530,18 @@ def refinar_stream(req: RefinamentoRequest):
     def event_generator():
         token_queue = queue.Queue()
         done_event = threading.Event()
+        cancel_event = register_cancellation_event()
         resultado_final = {}
 
         def stream_cb(full_text):
+            if cancel_event.is_set():
+                return False
             token_queue.put({"type": "stream", "full_text": full_text})
+            return True
 
         def worker():
             try:
-                res = engine.refinar_texto_com_ia(req.texto_atual, req.instrucoes, stream_callback=stream_cb)
+                res = engine.refinar_texto_com_ia(req.texto_atual, req.instrucoes, stream_callback=stream_cb, cancel_event=cancel_event)
                 resultado_final.update(res)
             except Exception as e:
                 resultado_final.update({"sucesso": False, "erro": str(e)})
@@ -311,35 +551,50 @@ def refinar_stream(req: RefinamentoRequest):
         t = threading.Thread(target=worker, daemon=True)
         t.start()
 
-        while not done_event.is_set() or not token_queue.empty():
-            try:
-                item = token_queue.get(timeout=0.08)
-                yield f"data: {json.dumps(item, ensure_ascii=False)}\n\n"
-            except queue.Empty:
-                continue
+        try:
+            while not done_event.is_set() or not token_queue.empty():
+                if cancel_event.is_set():
+                    break
+                try:
+                    item = token_queue.get(timeout=0.08)
+                    yield f"data: {json.dumps(item, ensure_ascii=False)}\n\n"
+                except queue.Empty:
+                    continue
 
-        if resultado_final.get("sucesso"):
-            texto_gerado = resultado_final.get("texto_gerado", "")
-            hist_id = engine.save_to_history(
-                doc_type="Refinamento",
-                subject=f"[Refinamento] {req.instrucoes[:25]}",
-                full_text=texto_gerado,
-                process_context=req.texto_processo or ""
-            )
-            done_payload = {
-                "type": "done",
-                "sucesso": True,
-                "history_id": hist_id,
-                "texto_gerado": texto_gerado
-            }
-        else:
-            done_payload = {
-                "type": "done",
-                "sucesso": False,
-                "erro": resultado_final.get("erro", "Erro ao refinar documento.")
-            }
+            if cancel_event.is_set() or resultado_final.get("cancelado"):
+                done_payload = {
+                    "type": "done",
+                    "sucesso": False,
+                    "cancelado": True,
+                    "erro": "Refinamento cancelado pelo usuário."
+                }
+            elif resultado_final.get("sucesso"):
+                texto_gerado = resultado_final.get("texto_gerado", "")
+                raciocinio = resultado_final.get("raciocinio", "")
+                hist_id = engine.save_to_history(
+                    doc_type="Refinamento",
+                    subject=f"[Refinamento] {req.instrucoes[:25]}",
+                    full_text=texto_gerado,
+                    process_context=req.texto_processo or "",
+                    raciocinio=raciocinio
+                )
+                done_payload = {
+                    "type": "done",
+                    "sucesso": True,
+                    "history_id": hist_id,
+                    "texto_gerado": texto_gerado,
+                    "raciocinio": raciocinio
+                }
+            else:
+                done_payload = {
+                    "type": "done",
+                    "sucesso": False,
+                    "erro": resultado_final.get("erro", "Erro ao refinar documento.")
+                }
 
-        yield f"data: {json.dumps(done_payload, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps(done_payload, ensure_ascii=False)}\n\n"
+        finally:
+            unregister_cancellation_event(cancel_event)
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
@@ -376,20 +631,25 @@ def delete_historico_item(entry_id: int):
 @app.post("/api/triagem-lote")
 async def triagem_lote(file: UploadFile = File(...)):
     """Recebe um arquivo compactado (.zip) com múltiplos processos e executa triagem automatizada."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        zip_path = os.path.join(tmpdir, file.filename or "lote.zip")
-        with open(zip_path, "wb") as f:
-            f.write(await file.read())
-            
-        resultados, erro = engine.processar_lote_processos(tmpdir)
-        if erro:
-            raise HTTPException(status_code=500, detail=erro)
-            
-        return {
-            "sucesso": True,
-            "total_processados": len(resultados),
-            "resultados": resultados
-        }
+    cancel_event = register_cancellation_event()
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            zip_path = os.path.join(tmpdir, file.filename or "lote.zip")
+            with open(zip_path, "wb") as f:
+                f.write(await file.read())
+                
+            resultados, erro = engine.processar_lote_processos(tmpdir, cancel_event=cancel_event)
+            if erro and not cancel_event.is_set():
+                raise HTTPException(status_code=500, detail=erro)
+                
+            return {
+                "sucesso": True,
+                "cancelado": cancel_event.is_set(),
+                "total_processados": len(resultados),
+                "resultados": resultados
+            }
+    finally:
+        unregister_cancellation_event(cancel_event)
 
 
 # --- Exportações DOCX / PDF / CSV / HTML SEI ---
@@ -458,10 +718,24 @@ app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
 
 @app.get("/{full_path:path}")
 def serve_spa(full_path: str):
-    """Entrega a aplicação SPA."""
+    """Entrega a aplicação SPA e arquivos estáticos (styles.css, app.js, etc)."""
+    headers = {"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache", "Expires": "0"}
+    if full_path:
+        clean_path = full_path.lstrip("/")
+        # Remove prefixo static/ se fornecido
+        if clean_path.startswith("static/"):
+            clean_path = clean_path[7:]
+        target = os.path.join(WEB_DIR, clean_path)
+        if os.path.isfile(target):
+            media_type = None
+            if target.endswith(".js"): media_type = "application/javascript"
+            elif target.endswith(".css"): media_type = "text/css"
+            elif target.endswith(".html"): media_type = "text/html"
+            return FileResponse(target, headers=headers, media_type=media_type)
+            
     index_file = os.path.join(WEB_DIR, "index.html")
     if os.path.exists(index_file):
-        return FileResponse(index_file)
+        return FileResponse(index_file, headers=headers, media_type="text/html")
     return JSONResponse({"status": "Servidor backend operacional. Interface web em construção."})
 
 

@@ -63,15 +63,51 @@ def test_export_docx_pdf_csv():
     assert len(resp_csv.content) > 10
     print("  [OK] Endpoints de exportação DOCX, PDF e CSV operacionais")
 
+def test_upload_pasta_multipla():
+    files = [
+        ("files", ("pasta_teste/doc1.txt", b"Documento 1 do processo SEI", "text/plain")),
+        ("files", ("pasta_teste/doc2.txt", b"Documento 2 com parecer tecnico", "text/plain")),
+    ]
+    resp = client.post("/api/upload-pasta-multipla", files=files)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data.get("sucesso") is True
+    assert "Documento 1" in data.get("texto_processo", "")
+    assert "Documento 2" in data.get("texto_processo", "")
+    print("  [OK] Endpoint /api/upload-pasta-multipla (upload de pastas completas) operacional")
+
+def test_static_assets():
+    resp_css = client.get("/styles.css")
+    assert resp_css.status_code == 200
+    assert len(resp_css.content) > 100
+
+    resp_js = client.get("/app.js")
+    assert resp_js.status_code == 200
+    assert "API_BASE" in resp_js.text
+    print("  [OK] Assets estáticos (/styles.css, /app.js) servidos com sucesso")
+
+def test_upload_processo_arquivo():
+    file_payload = ("processo_teste.txt", b"Texto de teste do processo 00112-00001234/2024-55 contendo despacho e relatorio.", "text/plain")
+    resp = client.post("/api/upload-processo", files={"file": file_payload})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data.get("sucesso") is True
+    assert "processo_teste.txt" in data.get("nome_processo", "")
+    assert "00112-00001234/2024-55" in data.get("texto_processo", "")
+    print("  [OK] Endpoint /api/upload-processo (upload de arquivo unico) operacional")
+
 if __name__ == "__main__":
     print("Testando Servidor Backend FastAPI do Gerador SEI...")
     print()
     
     test_static_index()
+    test_static_assets()
     test_status_endpoint()
     test_historico_endpoints()
     test_converter_sei_html()
     test_export_docx_pdf_csv()
+    test_upload_processo_arquivo()
+    test_upload_pasta_multipla()
     
     print()
     print("Todos os endpoints do servidor FastAPI foram validados com sucesso!")

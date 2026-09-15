@@ -83,14 +83,21 @@ class TinyVectorDB:
         with self.lock:
             if not self.data:
                 return []
-            query_vec = np.array(query_embedding)
+            query_vec = np.array(query_embedding, dtype=np.float32)
             norm_query = np.linalg.norm(query_vec)
+            if norm_query == 0:
+                return []
             results = []
             for doc_id, doc in self.data.items():
-                emb = np.array(doc["embedding"])
+                emb_raw = doc.get("embedding")
+                if not emb_raw or len(emb_raw) != len(query_vec):
+                    continue
+                emb = np.array(emb_raw, dtype=np.float32)
                 norm_emb = np.linalg.norm(emb)
-                sim = 0 if (norm_query == 0 or norm_emb == 0) else np.dot(query_vec, emb) / (norm_query * norm_emb)
-                results.append((sim, doc["text"]))
+                if norm_emb == 0:
+                    continue
+                sim = float(np.dot(query_vec, emb) / (norm_query * norm_emb))
+                results.append((sim, doc.get("text", "")))
             results.sort(key=lambda x: x[0], reverse=True)
             return [text for sim, text in results[:n_results]]
             
@@ -115,7 +122,8 @@ class HistoryDB:
                 doc_type TEXT,
                 subject TEXT,
                 full_text TEXT NOT NULL,
-                process_context TEXT
+                process_context TEXT,
+                raciocinio TEXT
             )
         """)
         # Migration: add process_context column if missing in existing table
@@ -126,14 +134,22 @@ class HistoryDB:
                 cursor.execute("ALTER TABLE history ADD COLUMN process_context TEXT")
             except Exception:
                 pass
+        # Migration: add raciocinio column if missing in existing table
+        try:
+            cursor.execute("SELECT raciocinio FROM history LIMIT 1")
+        except sqlite3.OperationalError:
+            try:
+                cursor.execute("ALTER TABLE history ADD COLUMN raciocinio TEXT")
+            except Exception:
+                pass
         self.conn.commit()
 
-    def add_entry(self, doc_type: str, subject: str, full_text: str, process_context: str = "") -> int:
+    def add_entry(self, doc_type: str, subject: str, full_text: str, process_context: str = "", raciocinio: str = "") -> int:
         cursor = self.conn.cursor()
         agora = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         cursor.execute(
-            "INSERT INTO history (timestamp, doc_type, subject, full_text, process_context) VALUES (?, ?, ?, ?, ?)",
-            (agora, doc_type, subject, full_text, process_context)
+            "INSERT INTO history (timestamp, doc_type, subject, full_text, process_context, raciocinio) VALUES (?, ?, ?, ?, ?, ?)",
+            (agora, doc_type, subject, full_text, process_context, raciocinio)
         )
         self.conn.commit()
         return cursor.lastrowid
@@ -173,6 +189,8 @@ class SEIEngine:
         self.modelos_file = modelos_file
         self._vector_db = TinyVectorDB()
         self.history_db = HistoryDB()
+        self.model_name = self._carregar_modelo_ativo()
+        self.embedding_model_name = self._carregar_modelo_embedding()
         self.modelos: Dict[str, Any] = {
             "HVeP - Atendimento/HVeP": MODELO_HVEP,
             "Castração de Cães e Gatos": MODELO_CASTRACAO,
@@ -181,6 +199,51 @@ class SEIEngine:
             "Ouvidoria à Suban": MODELO_OUVIDORIA_SUBAN
         }
         self._load_custom_modelos()
+
+    def _carregar_modelo_ativo(self) -> str:
+        """Carrega modelo de IA configurado ou detecta os instalados no Ollama."""
+        cfg_model = ""
+        if os.path.exists("config.json"):
+            try:
+                with open("config.json", "r", encoding="utf-8") as f:
+                    cfg = json.load(f)
+                    cfg_model = cfg.get("modelo_ia", "").strip()
+            except Exception:
+                pass
+
+        if cfg_model:
+            return cfg_model
+
+        try:
+            import ollama
+            resp = ollama.list()
+            nomes = []
+            if hasattr(resp, "models"):
+                nomes = [m.model for m in resp.models]
+            elif isinstance(resp, dict) and "models" in resp:
+                nomes = [m.get("name", "") for m in resp["models"]]
+            
+            for n in nomes:
+                if "llama3.2" in n:
+                    return n.split(":")[0]
+            for n in nomes:
+                if "embed" not in n:
+                    return n.split(":")[0]
+        except Exception:
+            pass
+
+        return "llama3.2"
+
+    def _carregar_modelo_embedding(self) -> str:
+        """Carrega modelo de embedding configurado."""
+        if os.path.exists("config.json"):
+            try:
+                with open("config.json", "r", encoding="utf-8") as f:
+                    cfg = json.load(f)
+                    return cfg.get("modelo_embedding", "nomic-embed-text").strip()
+            except Exception:
+                pass
+        return "nomic-embed-text"
 
     def _load_custom_modelos(self) -> None:
         """Load custom models from file."""
@@ -283,17 +346,22 @@ class SEIEngine:
         return False, "O serviço do Ollama não está rodando. Por favor, abra o aplicativo Ollama no seu computador."
 
     def _get_embedding_ollama(self, text: str) -> List[float]:
-        """Gera embeddings localmente chamando a API nativa do Ollama."""
-        import urllib.request
-        import json
-        req = urllib.request.Request(
-            "http://localhost:11434/api/embeddings",
-            data=json.dumps({"model": "llama3.2", "prompt": text}).encode('utf-8'),
-            headers={'Content-Type': 'application/json', 'Connection': 'close'}
-        )
-        with urllib.request.urlopen(req, timeout=600) as response:
-            res = json.loads(response.read().decode('utf-8'))
-            return res.get('embedding', [])
+        """Gera embeddings localmente chamando a API do Ollama com fallback seguro."""
+        try:
+            import urllib.request
+            import json
+            model = getattr(self, "embedding_model_name", "nomic-embed-text")
+            req = urllib.request.Request(
+                "http://localhost:11434/api/embeddings",
+                data=json.dumps({"model": model, "prompt": text[:1000]}).encode('utf-8'),
+                headers={'Content-Type': 'application/json', 'Connection': 'close'}
+            )
+            with urllib.request.urlopen(req, timeout=8) as response:
+                res = json.loads(response.read().decode('utf-8'))
+                return res.get('embedding', [])
+        except Exception as e:
+            logger.warning(f"Embedding falhou ou modelo indisponível: {e}")
+            return []
 
     def generate_despacho(self, data: Dict[str, str]) -> str:
         """Generate SEI dispatch text using named tag placeholders."""
@@ -478,11 +546,11 @@ class SEIEngine:
         """Get list of available models."""
         return list(self.modelos.keys())
 
-    def save_to_history(self, doc_type: str, subject: str, full_text: str, process_context: str = "") -> int:
+    def save_to_history(self, doc_type: str, subject: str, full_text: str, process_context: str = "", raciocinio: str = "") -> int:
         """Saves a generated document to the history database."""
         if not full_text.strip():
             return -1
-        return self.history_db.add_entry(doc_type, subject, full_text, process_context=process_context)
+        return self.history_db.add_entry(doc_type, subject, full_text, process_context=process_context, raciocinio=raciocinio)
 
     def delete_history_entry(self, entry_id: int) -> bool:
         """Deletes an entry from history."""
@@ -631,7 +699,7 @@ class SEIEngine:
             pass
         return regras_padrao
 
-    def processar_pasta_com_ia(self, folderpath: str, historico: list = None, stream_callback=None, molde_ia: str = "AUTO") -> Dict[str, Any]:
+    def processar_pasta_com_ia(self, folderpath: str, historico: list = None, stream_callback=None, molde_ia: str = "AUTO", cancel_event=None) -> Dict[str, Any]:
         """
         Processa todos os documentos de um processo SEI (pasta, .zip ou arquivo),
         busca exemplos no banco de vetores e gera resposta com Ollama (Local).
@@ -639,12 +707,15 @@ class SEIEngine:
         extracted_text, target_name = self.extrair_texto_de_alvo(folderpath)
         if not extracted_text.strip():
             return {"sucesso": False, "erro": "Nenhum texto extraível foi encontrado no processo selecionado (Podem ser arquivos sem OCR ou formato não suportado)."}
-        return self.analisar_processo_direto(extracted_text, nome_processo=target_name, molde_ia=molde_ia, stream_callback=stream_callback)
+        return self.analisar_processo_direto(extracted_text, nome_processo=target_name, molde_ia=molde_ia, stream_callback=stream_callback, cancel_event=cancel_event)
 
-    def analisar_processo_direto(self, texto_processo: str, nome_processo: str = "Processo", molde_ia: str = "AUTO", stream_callback=None) -> Dict[str, Any]:
+    def analisar_processo_direto(self, texto_processo: str, nome_processo: str = "Processo", molde_ia: str = "AUTO", stream_callback=None, cancel_event=None) -> Dict[str, Any]:
         """
         Analisa diretamente o texto em memória do processo com o molde solicitado e Ollama.
         """
+        if cancel_event and cancel_event.is_set():
+            return {"sucesso": False, "cancelado": True, "erro": "Processamento cancelado pelo usuário."}
+
         # Verifica se o Ollama está online antes de começar
         ollama_ok, erro_ollama = self._verificar_ollama()
         if not ollama_ok:
@@ -693,7 +764,7 @@ class SEIEngine:
             elif molde_ia == "AUTO":
                 prompt_class = f"Analise o texto a seguir e identifique o tipo de processo. Responda APENAS com UMA destas palavras: OUVIDORIA MINUTA, OUVIDORIA SUBAN, OUVIDORIA ELOGIO, DILACAO ou GENERICO.\n\nTexto: {extracted_text[:2000]}"
                 try:
-                    res_class = ollama.chat(model='gemma4', messages=[{'role': 'user', 'content': prompt_class}], options={'temperature': 0.1})
+                    res_class = ollama.chat(model=self.model_name, messages=[{'role': 'user', 'content': prompt_class}], options={'temperature': 0.1})
                     tipo_raw = res_class.get('message', {}).get('content', '').upper()
                     if 'OUVIDORIA ELOGIO' in tipo_raw: tipo_detectado = "OUVIDORIA ELOGIO"
                     elif 'OUVIDORIA MINUTA' in tipo_raw: tipo_detectado = "OUVIDORIA MINUTA"
@@ -762,6 +833,8 @@ ESTRUTURA OBRIGATÓRIA DA SUA RESPOSTA:
 ================================================================================
 
 DIRETRIZES FUNDAMENTAIS:
+- Estruture primeiro o seu raciocínio analítico dentro das tags <think> e </think>, mapeando datas, setores e conclusões.
+- Após fechar </think>, apresente o RESUMÃO EXECUTIVO DO PROCESSO.
 - Não invente informações. Se algo não constar nos autos, preencha como 'Não informado nos autos'.
 - Seja preciso com datas, números de documentos SEI e nomes de unidades/setores.
 - Não gere blocos de assinatura ou rodapés burocráticos ao final.
@@ -772,7 +845,7 @@ DIRETRIZES FUNDAMENTAIS:
 {extracted_text}
 --- FIM DOS DOCUMENTOS DO PROCESSO ---
 
-Com base exclusivamente nos fatos e documentos acima, gere o RESUMÃO EXECUTIVO DO PROCESSO seguindo rigorosamente a estrutura obrigatória solicitada."""
+Apresente primeiro o seu raciocínio dentro de <think>...</think> e em seguida gere o RESUMÃO EXECUTIVO DO PROCESSO seguindo a estrutura obrigatória."""
                 ia_options = {'temperature': 0.25, 'top_p': 0.85}
             elif tipo_detectado == "LINHA DO TEMPO":
                 system_prompt = """Você é um analista processual sênior do Governo do Distrito Federal.
@@ -980,6 +1053,14 @@ Atenciosamente,"""
                 system_prompt = f"""Você é um ASSESSOR DE GABINETE EXTREMAMENTE RIGOROSO e AUTORAL da SEPAN-DF. Sua função é redigir a MINUTA COMPLETA de um documento oficial.
 Você atua como um FILTRO. Você NUNCA repete o que os outros setores escreveram. Você lê, compreende, sintetiza e escreve a sua própria versão dos fatos.
 
+INSTRUÇÃO OBRIGATÓRIA DE RACIOCÍNIO (DEEP THINKING):
+Antes de redigir o documento oficial, estruture todo o seu raciocínio analítico dentro das tags <think> e </think>.
+Dentro de <think>...</think>:
+1. Identifique os números SEI (ofícios, manifestações, protocolos), interessado e resumo da demanda.
+2. Verifique os prazos legais e o setor destinatário (ex: Suban, Gabinete, Ouvidoria).
+3. Planeje a redação impessoal e a resposta técnica.
+Após fechar a tag </think>, inicie imediatamente a redação do documento final seguindo rigorosamente o molde.
+
 MOLDE OBRIGATÓRIO (SIGA ESTA ESTRUTURA RIGOROSAMENTE. NÃO ADICIONE NEM REMOVA PARÁGRAFOS DO MOLDE):
 {molde_escolhido}
 
@@ -1000,39 +1081,43 @@ REGRAS DE FORMATAÇÃO:
 {extracted_text}
 --- FIM DO DOCUMENTO ORIGINAL ---
 
-Agora, com base EXCLUSIVAMENTE nos fatos acima, gere a MINUTA COMPLETA preenchendo o MOLDE fornecido nas instruções do sistema.
-Lembre-se:
-1. Resuma e reescreva a justificativa com suas próprias palavras (PARÁFRASE RADICAL).
-2. PREENCHA RIGOROSAMENTE O MOLDE. É expressamente PROIBIDO colar trechos soltos do processo (como ofícios antigos) fora dos lugares indicados.
-3. NUNCA use a primeira pessoa (ex: "Encaminho"). Use SEMPRE a forma impessoal (ex: "Encaminham-se").
-4. Gere APENAS o documento final seguindo o molde exato. Comece com "Governo do Distrito Federal" e termine na palavra "Atenciosamente,"."""
+Primeiro, apresente o seu raciocínio analítico dentro de <think>...</think>.
+Em seguida, após </think>, gere a MINUTA COMPLETA preenchendo o MOLDE fornecido nas instruções do sistema."""
                 ia_options = {'temperature': 0.4, 'top_p': 0.85, 'stop': ['Assinado,', 'Assinatura', '[SEU NOME]', '[Nome]', 'Secretário Executivo']}
 
             try:
-                resposta = ollama.chat(model='gemma4', messages=[
+                resposta = ollama.chat(model=self.model_name, messages=[
                     {'role': 'system', 'content': system_prompt},
                     {'role': 'user', 'content': user_prompt}
                 ], options=ia_options, stream=True)
             except Exception as e:
                 logger.error(f"Erro de comunicação com Ollama: {e}", exc_info=True)
-                return {"sucesso": False, "erro": f"Erro de comunicação com o modelo no Ollama: {str(e)}. Verifique se o modelo 'gemma4' está instalado."}
+                return {"sucesso": False, "erro": f"Erro de comunicação com o modelo no Ollama: {str(e)}. Verifique se o modelo '{self.model_name}' está instalado."}
             
             conteudo_ia = ""
             for chunk in resposta:
+                if cancel_event and cancel_event.is_set():
+                    logger.info("Geração em analisar_processo_direto cancelada pelo usuário.")
+                    return {"sucesso": False, "cancelado": True, "erro": "Processamento cancelado pelo usuário."}
                 if 'message' in chunk and 'content' in chunk['message']:
                     conteudo_ia += chunk['message']['content']
                     if stream_callback:
-                        stream_callback(conteudo_ia)
+                        res_cb = stream_callback(conteudo_ia)
+                        if res_cb is False:
+                            return {"sucesso": False, "cancelado": True, "erro": "Processamento cancelado pelo usuário."}
             
             # Mantém o texto gerado (incluindo raciocínio) como texto livre
             conteudo_ia_limpo = conteudo_ia.strip()
             
-            # --- REMOÇÃO DO DEEP THINKING PARA O HISTÓRICO/RESULTADO ---
-            match_think = re.search(r'<think>.*?</think>', conteudo_ia_limpo, flags=re.DOTALL)
+            # --- EXTRAÇÃO E REMOÇÃO DO DEEP THINKING PARA O HISTÓRICO/RESULTADO ---
+            match_think = re.search(r'<think>(.*?)</think>', conteudo_ia, flags=re.DOTALL)
+            raciocinio = match_think.group(1).strip() if match_think else ""
             if match_think:
-                conteudo_ia_limpo = conteudo_ia_limpo.replace(match_think.group(0), "").strip()
-            elif "<think>" in conteudo_ia_limpo:
-                conteudo_ia_limpo = re.sub(r'<think>.*', '', conteudo_ia_limpo, flags=re.DOTALL).strip()
+                conteudo_ia_limpo = re.sub(r'<think>.*?</think>', '', conteudo_ia, flags=re.DOTALL).strip()
+            elif "<think>" in conteudo_ia:
+                match_partial = re.search(r'<think>(.*)', conteudo_ia, flags=re.DOTALL)
+                raciocinio = match_partial.group(1).strip() if match_partial else ""
+                conteudo_ia_limpo = re.sub(r'<think>.*', '', conteudo_ia, flags=re.DOTALL).strip()
 
             # --- GUILHOTINA DE PÓS-PROCESSAMENTO ---
             if tipo_detectado not in ("EXTRAÇÃO", "RESUMÃO", "LINHA DO TEMPO", "AUDITORIA"):
@@ -1067,6 +1152,7 @@ Lembre-se:
                 "tipo_documento": tipo_doc,
                 "resumo": resumo_texto,
                 "texto_gerado": conteudo_ia_limpo,
+                "raciocinio": raciocinio,
                 "texto_processo": extracted_text,
                 "nome_processo": target_name
             }
@@ -1074,10 +1160,13 @@ Lembre-se:
             logger.error(f"Erro geral em processar_pasta_com_ia: {e}", exc_info=True)
             return {"sucesso": False, "erro": str(e)}
 
-    def responder_pergunta_sobre_processo(self, pergunta: str, texto_processo: str, stream_callback=None) -> Dict[str, Any]:
+    def responder_pergunta_sobre_processo(self, pergunta: str, texto_processo: str, stream_callback=None, cancel_event=None) -> Dict[str, Any]:
         """
         Responde a uma pergunta específica do usuário baseando-se estritamente nos autos do processo carregado.
         """
+        if cancel_event and cancel_event.is_set():
+            return {"sucesso": False, "cancelado": True, "erro": "Processamento cancelado pelo usuário."}
+
         ollama_ok, erro_ollama = self._verificar_ollama()
         if not ollama_ok:
             return {"sucesso": False, "erro": erro_ollama}
@@ -1104,34 +1193,45 @@ Pergunta do Assessor: {pergunta}
 
 Responda fundamentando-se nos documentos acima:"""
 
-            resposta = ollama.chat(model='gemma4', messages=[
+            resposta = ollama.chat(model=self.model_name, messages=[
                 {'role': 'system', 'content': system_prompt},
                 {'role': 'user', 'content': user_prompt}
             ], options={'temperature': 0.2, 'top_p': 0.9}, stream=True)
             
             conteudo_ia = ""
             for chunk in resposta:
+                if cancel_event and cancel_event.is_set():
+                    logger.info("Pergunta sobre processo cancelada pelo usuário.")
+                    return {"sucesso": False, "cancelado": True, "erro": "Processamento cancelado pelo usuário."}
                 if 'message' in chunk and 'content' in chunk['message']:
                     conteudo_ia += chunk['message']['content']
                     if stream_callback:
-                        stream_callback(conteudo_ia)
+                        res_cb = stream_callback(conteudo_ia)
+                        if res_cb is False:
+                            return {"sucesso": False, "cancelado": True, "erro": "Processamento cancelado pelo usuário."}
                         
             conteudo_ia_limpo = conteudo_ia.strip()
-            match_think = re.search(r'<think>.*?</think>', conteudo_ia_limpo, flags=re.DOTALL)
+            match_think = re.search(r'<think>(.*?)</think>', conteudo_ia, flags=re.DOTALL)
+            raciocinio = match_think.group(1).strip() if match_think else ""
             if match_think:
-                conteudo_ia_limpo = conteudo_ia_limpo.replace(match_think.group(0), "").strip()
-            elif "<think>" in conteudo_ia_limpo:
-                conteudo_ia_limpo = re.sub(r'<think>.*', '', conteudo_ia_limpo, flags=re.DOTALL).strip()
+                conteudo_ia_limpo = re.sub(r'<think>.*?</think>', '', conteudo_ia, flags=re.DOTALL).strip()
+            elif "<think>" in conteudo_ia:
+                match_partial = re.search(r'<think>(.*)', conteudo_ia, flags=re.DOTALL)
+                raciocinio = match_partial.group(1).strip() if match_partial else ""
+                conteudo_ia_limpo = re.sub(r'<think>.*', '', conteudo_ia, flags=re.DOTALL).strip()
                 
-            return {"sucesso": True, "texto_gerado": conteudo_ia_limpo}
+            return {"sucesso": True, "texto_gerado": conteudo_ia_limpo, "raciocinio": raciocinio}
         except Exception as e:
             logger.error(f"Erro ao responder sobre processo: {e}", exc_info=True)
             return {"sucesso": False, "erro": str(e)}
 
-    def processar_lote_processos(self, parent_folder: str, progress_callback=None) -> Tuple[List[Dict[str, Any]], str]:
+    def processar_lote_processos(self, parent_folder: str, progress_callback=None, cancel_event=None) -> Tuple[List[Dict[str, Any]], str]:
         """
         Processa múltiplos processos (subpastas, arquivos .zip ou .pdf) e gera uma tabela de triagem em lote.
         """
+        if cancel_event and cancel_event.is_set():
+            return [], "Processamento cancelado pelo usuário."
+
         ollama_ok, erro_ollama = self._verificar_ollama()
         if not ollama_ok:
             return [], erro_ollama
@@ -1154,6 +1254,10 @@ Responda fundamentando-se nos documentos acima:"""
             resultados = []
             
             for idx, item_path in enumerate(itens):
+                if cancel_event and cancel_event.is_set():
+                    logger.info("Triagem em lote cancelada pelo usuário.")
+                    break
+
                 nome_alvo = os.path.basename(item_path)
                 if progress_callback:
                     progress_callback(idx + 1, total, nome_alvo)
@@ -1193,7 +1297,7 @@ Responda APENAS com um objeto JSON válido contendo exatamente estas chaves:
 
                 try:
                     res = ollama.chat(
-                        model='gemma4',
+                        model=self.model_name,
                         messages=[{'role': 'user', 'content': prompt_triagem}],
                         options={'temperature': 0.1, 'top_p': 0.9}
                     )
@@ -1255,8 +1359,11 @@ Responda APENAS com um objeto JSON válido contendo exatamente estas chaves:
         except Exception as e:
             return False, str(e)
 
-    def refinar_texto_com_ia(self, texto_atual: str, instrucao: str, stream_callback=None) -> Dict[str, Any]:
+    def refinar_texto_com_ia(self, texto_atual: str, instrucao: str, stream_callback=None, cancel_event=None) -> Dict[str, Any]:
         """Usa o Ollama para refinar um texto existente baseado nas instruções do usuário."""
+        if cancel_event and cancel_event.is_set():
+            return {"sucesso": False, "cancelado": True, "erro": "Processamento cancelado pelo usuário."}
+
         ollama_ok, erro_ollama = self._verificar_ollama()
         if not ollama_ok:
             return {"sucesso": False, "erro": erro_ollama}
@@ -1277,33 +1384,44 @@ Retorne APENAS o texto modificado pronto para uso."""
 
             prompt_user = f"Texto Atual:\n{texto_atual}\n\nInstrução do que deve ser alterado:\n{instrucao}\n\nReescreva o texto aplicando as alterações solicitadas."
 
-            resposta = ollama.chat(model='gemma4', messages=[
+            resposta = ollama.chat(model=self.model_name, messages=[
                 {'role': 'system', 'content': system_prompt},
                 {'role': 'user', 'content': prompt_user}
             ], stream=True)
             
             conteudo_ia = ""
             for chunk in resposta:
+                if cancel_event and cancel_event.is_set():
+                    logger.info("Refinamento cancelado pelo usuário.")
+                    return {"sucesso": False, "cancelado": True, "erro": "Processamento cancelado pelo usuário."}
                 if 'message' in chunk and 'content' in chunk['message']:
                     conteudo_ia += chunk['message']['content']
                     if stream_callback:
-                        stream_callback(conteudo_ia)
+                        res_cb = stream_callback(conteudo_ia)
+                        if res_cb is False:
+                            return {"sucesso": False, "cancelado": True, "erro": "Processamento cancelado pelo usuário."}
                         
             conteudo_ia_limpo = conteudo_ia.strip()
             
-            match_think = re.search(r'<think>.*?</think>', conteudo_ia_limpo, flags=re.DOTALL)
+            match_think = re.search(r'<think>(.*?)</think>', conteudo_ia, flags=re.DOTALL)
+            raciocinio = match_think.group(1).strip() if match_think else ""
             if match_think:
-                conteudo_ia_limpo = conteudo_ia_limpo.replace(match_think.group(0), "").strip()
-            elif "<think>" in conteudo_ia_limpo:
-                conteudo_ia_limpo = re.sub(r'<think>.*', '', conteudo_ia_limpo, flags=re.DOTALL).strip()
+                conteudo_ia_limpo = re.sub(r'<think>.*?</think>', '', conteudo_ia, flags=re.DOTALL).strip()
+            elif "<think>" in conteudo_ia:
+                match_partial = re.search(r'<think>(.*)', conteudo_ia, flags=re.DOTALL)
+                raciocinio = match_partial.group(1).strip() if match_partial else ""
+                conteudo_ia_limpo = re.sub(r'<think>.*', '', conteudo_ia, flags=re.DOTALL).strip()
                 
-            return {"sucesso": True, "texto_gerado": conteudo_ia_limpo}
+            return {"sucesso": True, "texto_gerado": conteudo_ia_limpo, "raciocinio": raciocinio}
         except Exception as e:
             logger.error(f"Erro ao refinar texto com o Ollama: {e}", exc_info=True)
             return {"sucesso": False, "erro": str(e)}
 
-    def responder_pergunta_geral_com_ia(self, pergunta: str, stream_callback=None) -> Dict[str, Any]:
+    def responder_pergunta_geral_com_ia(self, pergunta: str, stream_callback=None, cancel_event=None) -> Dict[str, Any]:
         """Usa o Ollama para responder uma pergunta geral usando o RAG."""
+        if cancel_event and cancel_event.is_set():
+            return {"sucesso": False, "cancelado": True, "erro": "Processamento cancelado pelo usuário."}
+
         ollama_ok, erro_ollama = self._verificar_ollama()
         if not ollama_ok:
             return {"sucesso": False, "erro": erro_ollama}
@@ -1342,27 +1460,35 @@ INSTRUÇÃO: Use a Base de Conhecimento acima para descobrir a resposta da pergu
 
             user_prompt = f"Mensagem do Usuário: {pergunta}\n\n[Lembrete de Sistema: Responda obrigatoriamente como se estivesse em um chat de WhatsApp. Sem ofícios, sem 'Assunto:', sem numeração de parágrafos. Apenas texto normal.]"
 
-            resposta = ollama.chat(model='gemma4', messages=[
+            resposta = ollama.chat(model=self.model_name, messages=[
                 {'role': 'system', 'content': system_prompt},
                 {'role': 'user', 'content': user_prompt}
             ], stream=True)
             
             conteudo_ia = ""
             for chunk in resposta:
+                if cancel_event and cancel_event.is_set():
+                    logger.info("Pergunta geral cancelada pelo usuário.")
+                    return {"sucesso": False, "cancelado": True, "erro": "Processamento cancelado pelo usuário."}
                 if 'message' in chunk and 'content' in chunk['message']:
                     conteudo_ia += chunk['message']['content']
                     if stream_callback:
-                        stream_callback(conteudo_ia)
+                        res_cb = stream_callback(conteudo_ia)
+                        if res_cb is False:
+                            return {"sucesso": False, "cancelado": True, "erro": "Processamento cancelado pelo usuário."}
                         
             conteudo_ia_limpo = conteudo_ia.strip()
             
-            match_think = re.search(r'<think>.*?</think>', conteudo_ia_limpo, flags=re.DOTALL)
+            match_think = re.search(r'<think>(.*?)</think>', conteudo_ia, flags=re.DOTALL)
+            raciocinio = match_think.group(1).strip() if match_think else ""
             if match_think:
-                conteudo_ia_limpo = conteudo_ia_limpo.replace(match_think.group(0), "").strip()
-            elif "<think>" in conteudo_ia_limpo:
-                conteudo_ia_limpo = re.sub(r'<think>.*', '', conteudo_ia_limpo, flags=re.DOTALL).strip()
+                conteudo_ia_limpo = re.sub(r'<think>.*?</think>', '', conteudo_ia, flags=re.DOTALL).strip()
+            elif "<think>" in conteudo_ia:
+                match_partial = re.search(r'<think>(.*)', conteudo_ia, flags=re.DOTALL)
+                raciocinio = match_partial.group(1).strip() if match_partial else ""
+                conteudo_ia_limpo = re.sub(r'<think>.*', '', conteudo_ia, flags=re.DOTALL).strip()
 
-            return {"sucesso": True, "texto_gerado": conteudo_ia_limpo}
+            return {"sucesso": True, "texto_gerado": conteudo_ia_limpo, "raciocinio": raciocinio}
         except Exception as e:
             logger.error(f"Erro ao responder pergunta com o Ollama: {e}", exc_info=True)
             return {"sucesso": False, "erro": str(e)}

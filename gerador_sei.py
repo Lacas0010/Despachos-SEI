@@ -10,6 +10,7 @@ from tkinter import filedialog, simpledialog
 import json
 import os
 import logging
+import threading
 from typing import Dict, List, Optional, Any
 import customtkinter as ctk
 from PIL import Image, ImageDraw, ImageFont
@@ -78,6 +79,7 @@ class GeradorSEIApp(ctk.CTk):
         self.processo_ativo_texto: str = ""
         self.processo_ativo_nome: str = ""
         self.lote_resultados: List[Dict[str, Any]] = []
+        self.current_cancel_event: Optional[threading.Event] = None
         
         self._chat_stream_start_index: Optional[str] = None
         
@@ -362,6 +364,18 @@ class GeradorSEIApp(ctk.CTk):
         self.progress_bar = ctk.CTkProgressBar(footer, mode="indeterminate", width=180, height=8, corner_radius=4)
         self.progress_bar.set(0)
         
+        self.btn_cancelar_processo = ctk.CTkButton(
+            footer,
+            text="✖ Cancelar",
+            command=self._on_cancelar_processo,
+            height=28,
+            width=85,
+            corner_radius=6,
+            font=get_font(11, "bold"),
+            fg_color=get_color_tuple("error"),
+            hover_color="#c92a2a"
+        )
+        
         # Botões de Exportação
         icon_clear = self._get_emoji_icon("🧹", (18, 18))
         ctk.CTkButton(
@@ -635,14 +649,23 @@ class GeradorSEIApp(ctk.CTk):
         ).pack(fill="x")
 
     def _show_progress(self, mode="indeterminate"):
+        self.current_cancel_event = threading.Event()
         self.progress_bar.configure(mode=mode)
-        self.progress_bar.pack(side="left", padx=15)
+        self.progress_bar.pack(side="left", padx=(15, 6))
+        self.btn_cancelar_processo.pack(side="left", padx=4)
         if mode == "indeterminate":
             self.progress_bar.start()
 
     def _hide_progress(self):
         self.progress_bar.stop()
         self.progress_bar.pack_forget()
+        self.btn_cancelar_processo.pack_forget()
+        self.current_cancel_event = None
+
+    def _on_cancelar_processo(self):
+        if self.current_cancel_event:
+            self.current_cancel_event.set()
+            self.status_label.configure(text="Cancelando processo...", text_color=get_color_tuple("warning"))
 
     def _add_to_chat(self, role: str, text: str):
         """Adiciona uma mensagem ao chat com formatação markdown rica e cores por papel."""
@@ -735,15 +758,26 @@ class GeradorSEIApp(ctk.CTk):
             self.ai_executor.submit(self._process_general_query, msg)
 
     def _process_qa_processo(self, msg: str, texto_processo: str):
-        res = self.engine.responder_pergunta_sobre_processo(msg, texto_processo, stream_callback=self._on_chat_stream_update)
+        res = self.engine.responder_pergunta_sobre_processo(msg, texto_processo, stream_callback=self._on_chat_stream_update, cancel_event=self.current_cancel_event)
         self.schedule_task(lambda: self._apply_chat_qa_result(res, label_tipo="Consulta aos Autos"))
 
     def _process_general_query(self, msg: str):
-        res = self.engine.responder_pergunta_geral_com_ia(msg, stream_callback=self._on_chat_stream_update)
+        res = self.engine.responder_pergunta_geral_com_ia(msg, stream_callback=self._on_chat_stream_update, cancel_event=self.current_cancel_event)
         self.schedule_task(lambda: self._apply_chat_qa_result(res, label_tipo="Pesquisa RAG"))
 
     def _apply_chat_qa_result(self, res: Dict[str, Any], label_tipo: str = "Chat"):
         self._hide_progress()
+        if res.get("cancelado"):
+            self.status_label.configure(text=f"{label_tipo} cancelado!", text_color=get_color_tuple("warning"))
+            if self._chat_stream_start_index:
+                self.chat_history.configure(state="normal")
+                self.chat_history.delete(self._chat_stream_start_index, tk.END)
+                self.chat_history.insert(tk.END, "*(Operação cancelada pelo usuário)*\n\n")
+                self.chat_history.configure(state="disabled")
+                self.chat_history.see(tk.END)
+                self._chat_stream_start_index = None
+            return
+
         if res.get("sucesso"):
             novo_texto = res.get("texto_gerado", "")
             
@@ -770,11 +804,16 @@ class GeradorSEIApp(ctk.CTk):
             self.status_label.configure(text="Falha no chat", text_color=get_color_tuple("error"))
 
     def _process_chat(self, msg: str, texto_atual: str):
-        res = self.engine.refinar_texto_com_ia(texto_atual, msg, stream_callback=self._on_doc_stream_update)
+        res = self.engine.refinar_texto_com_ia(texto_atual, msg, stream_callback=self._on_doc_stream_update, cancel_event=self.current_cancel_event)
         self.schedule_task(lambda: self._apply_refine_result(res))
 
     def _apply_refine_result(self, res: Dict[str, Any]):
         self._hide_progress()
+        if res.get("cancelado"):
+            self.status_label.configure(text="Refinamento cancelado!", text_color=get_color_tuple("warning"))
+            self._add_to_chat("Sistema", "Refinamento cancelado pelo usuário.")
+            return
+
         if res.get("sucesso"):
             novo_texto = res.get("texto_gerado", "")
             if novo_texto:
@@ -820,11 +859,15 @@ class GeradorSEIApp(ctk.CTk):
         self.ai_executor.submit(self._process_ia, path, molde_selecionado)
 
     def _process_ia(self, path: str, molde_selecionado: str = "AUTO"):
-        res = self.engine.processar_pasta_com_ia(path, stream_callback=self._on_doc_stream_update, molde_ia=molde_selecionado)
+        res = self.engine.processar_pasta_com_ia(path, stream_callback=self._on_doc_stream_update, molde_ia=molde_selecionado, cancel_event=self.current_cancel_event)
         self.schedule_task(lambda: self._apply_ia_result(res))
         
     def _apply_ia_result(self, res: Dict[str, Any]):
         self._hide_progress()
+        if res.get("cancelado"):
+            self.status_label.configure(text="Análise cancelada pelo usuário!", text_color=get_color_tuple("warning"))
+            return
+
         if res.get("sucesso"):
             tipo_doc = res.get("tipo_documento", "Documento")
             texto_gerado = res.get("texto_gerado", "")
@@ -868,11 +911,16 @@ class GeradorSEIApp(ctk.CTk):
         def cb(cur, tot, f):
             self.schedule_task(lambda: self.status_label.configure(text=f"Triando {cur}/{tot}: {f[:25]}"))
             self.schedule_task(lambda: self.progress_bar.set(cur / tot if tot > 0 else 0))
-        resultados, erro = self.engine.processar_lote_processos(path, cb)
+        resultados, erro = self.engine.processar_lote_processos(path, cb, cancel_event=self.current_cancel_event)
         self.schedule_task(lambda: self._apply_lote_result(resultados, erro))
 
     def _apply_lote_result(self, resultados: List[Dict[str, Any]], erro: str):
         self._hide_progress()
+        if erro and "cancelad" in erro.lower():
+            self.status_label.configure(text="Triagem cancelada pelo usuário!", text_color=get_color_tuple("warning"))
+            self.lote_status_lbl.configure(text="Triagem cancelada.")
+            return
+
         if erro:
             self._show_message("Erro no Lote", erro, "error")
             self.status_label.configure(text="Erro na triagem", text_color=get_color_tuple("error"))

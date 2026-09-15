@@ -16,7 +16,7 @@
   <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest"></script>
   
-  <link rel="stylesheet" href="/static/styles.css">
+  <link rel="stylesheet" href="styles.css?v=2.1.2">
 </head>
 <body>
   <div id="app" class="app-container">
@@ -40,6 +40,15 @@
       </div>
       
       <div class="header-right">
+        <!-- AI Model Selector -->
+        <div class="model-selector-group" title="Selecione o modelo do Ollama para redação">
+          <label for="select-ai-model" class="model-label"><i data-lucide="cpu"></i></label>
+          <select id="select-ai-model" class="model-select">
+            <option value="llama3.2" selected>LLaMA 3.2 (Rápido)</option>
+            <option value="gemma4">Gemma 4 (8B)</option>
+          </select>
+        </div>
+
         <div id="ollama-status" class="status-pill status-checking" title="Conexão com a Inteligência Artificial Local">
           <span class="status-dot"></span>
           <span id="ollama-status-text">Verificando IA...</span>
@@ -76,19 +85,43 @@
         <!-- Tab 1: Assistente & Chat -->
         <div id="tab-assistente" class="tab-pane active">
           
-          <!-- Dropzone / File Loader -->
+          <!-- Dropzone / File & Folder Loader -->
           <div id="dropzone" class="file-dropzone">
             <input type="file" id="file-input" accept=".zip,.pdf,.docx,.txt,.html,.htm" hidden>
+            <input type="file" id="folder-input" webkitdirectory directory multiple hidden>
             <div class="dropzone-content">
               <div class="dropzone-icon"><i data-lucide="upload-cloud"></i></div>
               <div class="dropzone-text">
-                <strong>Arraste o processo aqui</strong>
-                <span>ou clique para selecionar (.zip, .pdf, .docx)</span>
+                <strong>Arraste pasta ou arquivo aqui</strong>
+                <span>(suporta pasta com documentos, .zip, .pdf, .docx)</span>
               </div>
             </div>
-            <div id="upload-progress" class="upload-progress-bar hidden">
-              <div class="progress-fill"></div>
+            
+            <!-- Progress Overlay with Live Status & Percentage Bar -->
+            <div id="upload-progress" class="upload-progress-container hidden">
+              <div class="progress-details">
+                <div class="progress-label-group">
+                  <div class="spinner-sm"></div>
+                  <span id="upload-progress-text" class="progress-label">Processando autos do processo...</span>
+                </div>
+                <span id="upload-progress-percent" class="progress-percent">0%</span>
+              </div>
+              <div class="upload-progress-track">
+                <div id="upload-progress-fill" class="progress-fill"></div>
+              </div>
             </div>
+          </div>
+
+          <!-- Selection Action Buttons (Pasta / Arquivo) -->
+          <div class="file-action-buttons">
+            <button id="btn-select-folder" class="btn btn-primary btn-sm flex-1" type="button" title="Selecionar Pasta do Processo no Computador">
+              <i data-lucide="folder"></i>
+              <span>Selecionar Pasta</span>
+            </button>
+            <button id="btn-select-file" class="btn btn-secondary btn-sm flex-1" type="button" title="Selecionar Arquivo ZIP ou PDF">
+              <i data-lucide="file-archive"></i>
+              <span>Arquivo / ZIP</span>
+            </button>
           </div>
 
           <!-- Controls: Molde + Action Button -->
@@ -110,10 +143,16 @@
               </div>
             </div>
 
-            <button id="btn-gerar-analise" class="btn btn-primary btn-block">
-              <i data-lucide="sparkles"></i>
-              <span>Gerar Análise / Minuta</span>
-            </button>
+            <div class="generator-btn-row">
+              <button id="btn-gerar-analise" class="btn btn-primary btn-block">
+                <i data-lucide="sparkles"></i>
+                <span>Gerar Análise / Minuta</span>
+              </button>
+              <button id="btn-cancelar-analise" class="btn btn-danger btn-block hidden" title="Cancelar geração da IA">
+                <i data-lucide="square"></i>
+                <span>Cancelar Geração</span>
+              </button>
+            </div>
           </div>
 
           <!-- Chat Section -->
@@ -137,10 +176,25 @@
               </div>
             </div>
 
+            <!-- Chat Live Generation Indicator with Stop button -->
+            <div id="chat-generating-indicator" class="chat-generating-bar hidden">
+              <div class="chat-gen-left">
+                <div class="spinner-sm"></div>
+                <span>IA respondendo...</span>
+              </div>
+              <button id="btn-cancel-chat-top" class="btn-cancel-chat-pill" title="Parar resposta da IA">
+                <i data-lucide="square"></i>
+                <span>Parar</span>
+              </button>
+            </div>
+
             <div class="chat-input-wrapper">
               <textarea id="chat-input" placeholder="Faça uma pergunta sobre o processo ou peça alterações..." rows="1"></textarea>
               <button id="btn-send-chat" class="btn-send" title="Enviar mensagem (Ctrl+Enter)">
                 <i data-lucide="arrow-up"></i>
+              </button>
+              <button id="btn-cancel-chat" class="btn-send btn-cancel-active hidden" title="Cancelar resposta da IA">
+                <i data-lucide="square"></i>
               </button>
             </div>
           </div>
@@ -167,8 +221,17 @@
             </div>
 
             <div id="lote-status-container" class="lote-status-box hidden">
-              <div class="spinner-sm"></div>
-              <span id="lote-status-msg">Processando processos...</span>
+              <div class="lote-status-top">
+                <div class="spinner-sm"></div>
+                <span id="lote-status-msg">Processando processos em lote...</span>
+                <button id="btn-cancelar-lote" class="btn-cancel-xs" title="Cancelar triagem em lote">
+                  <i data-lucide="square"></i>
+                  <span>Cancelar</span>
+                </button>
+              </div>
+              <div class="upload-progress-track">
+                <div id="lote-progress-fill" class="progress-fill indeterminate"></div>
+              </div>
             </div>
 
             <div id="lote-results-list" class="lote-cards-container">
@@ -232,6 +295,11 @@
           </div>
 
           <div class="doc-actions">
+            <button id="btn-toggle-thinking" class="btn btn-outline btn-thinking-toggle" title="Ver/Ocultar Raciocínio da IA (Deep Thinking)">
+              <i data-lucide="brain"></i>
+              <span>Raciocínio IA</span>
+            </button>
+
             <button id="btn-copy-sei" class="btn btn-primary btn-glow" title="Copia com tipografia oficial do SEI">
               <i data-lucide="clipboard-check"></i>
               <span>Copiar p/ SEI</span>
@@ -258,11 +326,76 @@
           </div>
         </div>
 
+        <!-- Live AI Generation Progress Indicator -->
+        <div id="generation-progress-banner" class="generation-progress-banner hidden">
+          <div class="gen-progress-inner">
+            <div class="gen-progress-left">
+              <div class="gen-pulse-dot"></div>
+              <div class="gen-progress-info">
+                <strong id="gen-progress-title">Gerando Análise com Inteligência Artificial...</strong>
+                <span id="gen-progress-subtitle">Ollama conectado • Analisando autos e redigindo documento oficial</span>
+              </div>
+            </div>
+            <div class="gen-progress-right">
+              <div class="gen-stat-pill">
+                <i data-lucide="clock"></i>
+                <span id="gen-timer">00:00s</span>
+              </div>
+              <div class="gen-stat-pill">
+                <i data-lucide="activity"></i>
+                <span id="gen-chars-count">0 caracteres</span>
+              </div>
+              <button id="btn-cancel-gen" class="btn btn-danger-sm btn-cancel-gen" title="Cancelar processo da IA">
+                <i data-lucide="square"></i>
+                <span>Cancelar</span>
+              </button>
+            </div>
+          </div>
+          <div class="gen-progress-track">
+            <div id="gen-progress-fill" class="gen-progress-fill indeterminate"></div>
+          </div>
+        </div>
+
         <!-- Document Views Container -->
         <div class="doc-view-container">
           
           <!-- 1. Formatted View (SEI HTML & Markdown Rendered) -->
           <div id="view-formatted" class="view-pane active">
+            
+            <!-- Deep Thinking Collapsible Panel / Window -->
+            <div id="thinking-panel" class="doc-thinking-card hidden">
+              <div class="thinking-header">
+                <div class="thinking-title-group">
+                  <div class="thinking-icon-glow">
+                    <i data-lucide="brain"></i>
+                  </div>
+                  <div class="thinking-title-info">
+                    <div class="thinking-title">Raciocínio da IA (Deep Thinking)</div>
+                    <div id="thinking-badge" class="thinking-badge-live">
+                      <span class="thinking-pulse-dot"></span>
+                      <span id="thinking-badge-text">Raciocinando sobre o caso...</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="thinking-actions">
+                  <button id="btn-copy-thinking" class="btn-icon-xs" title="Copiar Raciocínio Completo">
+                    <i data-lucide="copy"></i>
+                  </button>
+                  <button id="btn-collapse-thinking" class="btn-icon-xs" title="Recolher / Expandir Raciocínio">
+                    <i data-lucide="chevron-up" id="icon-collapse-thinking"></i>
+                  </button>
+                  <button id="btn-close-thinking" class="btn-icon-xs" title="Fechar Janela de Raciocínio">
+                    <i data-lucide="x"></i>
+                  </button>
+                </div>
+              </div>
+              <div id="thinking-body" class="thinking-body">
+                <div id="thinking-content" class="thinking-content">
+                  <em>Aguardando início do raciocínio da IA...</em>
+                </div>
+              </div>
+            </div>
+
             <div id="doc-render-content" class="sei-paper">
               <div class="empty-doc-placeholder">
                 <i data-lucide="file-signature"></i>
@@ -309,6 +442,6 @@
 
   </div>
 
-  <script src="/static/app.js"></script>
+  <script src="app.js?v=2.1.2"></script>
 </body>
 </html>
